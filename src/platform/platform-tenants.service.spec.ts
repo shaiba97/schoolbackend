@@ -321,6 +321,66 @@ describe('PlatformTenantsService.updateStatus', () => {
   });
 });
 
+describe('PlatformTenantsService.unarchive', () => {
+  it('restores an archived school and lifts its lock', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ARCHIVED',
+      lockedAt: new Date('2026-04-01'),
+      lockReason: 'MANUAL_TERMINATION',
+    });
+    (prisma.tenant.update as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      status: 'ACTIVE',
+    });
+
+    const result = await service.unarchive(TENANT_ID, actor);
+
+    expect(result).toMatchObject({ status: 'ACTIVE', restored: true });
+    expect(prisma.tenant.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: TENANT_ID },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          lockedAt: null,
+          lockReason: null,
+        }),
+      }),
+    );
+    expect(prisma.platformAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'tenant.unarchived' }),
+      }),
+    );
+  });
+
+  it('refuses to restore a school that is not archived', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+    });
+
+    await expect(service.unarchive(TENANT_ID, actor)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('throws when the school does not exist', async () => {
+    const { service } = build();
+
+    await expect(service.unarchive(TENANT_ID, actor)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});
+
 describe('PlatformTenantsService.setModule', () => {
   it('upserts the module switch and audits the change', async () => {
     const { service, prisma } = build();

@@ -319,6 +319,52 @@ export class PlatformTenantsService {
     return { id: updated.id, status: updated.status, changed: true };
   }
 
+  /**
+   * Brings an archived school back.
+   *
+   * ARCHIVED is terminal for the ordinary status flow - a school that closed
+   * stays closed. This is the deliberate exception: a super admin restores a
+   * school that was archived by mistake, or that is coming back. The licence
+   * is not touched, so the school still needs a renewal if its term ended.
+   */
+  async unarchive(tenantId: string, actor: PlatformActor) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        lockedAt: true,
+        lockReason: true,
+      },
+    });
+    if (!tenant) throw new NotFoundException('School not found');
+    if (tenant.status !== 'ARCHIVED') {
+      throw new BadRequestException('Only an archived school can be restored');
+    }
+
+    const updated = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        status: 'ACTIVE',
+        lockedAt: null,
+        lockReason: null,
+      },
+      select: { id: true, status: true },
+    });
+
+    await this.audit(actor, {
+      action: 'tenant.unarchived',
+      entityType: 'tenant',
+      entityId: tenantId,
+      tenantId,
+      oldValues: { status: tenant.status },
+      newValues: { status: 'ACTIVE' },
+    });
+
+    return { id: updated.id, status: updated.status, restored: true };
+  }
+
   async setModule(
     tenantId: string,
     module: string,

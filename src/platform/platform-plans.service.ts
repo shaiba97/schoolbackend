@@ -151,6 +151,44 @@ export class PlatformPlansService {
     return this.toTier(plan);
   }
 
+  /**
+   * Removes a tier from the catalogue.
+   *
+   * A tier that any school still holds cannot be deleted: the licence would
+   * point at a missing plan. The operator moves those schools to another
+   * tier first, and the message says how many are in the way.
+   */
+  async deleteTier(id: string, actor: PlatformActor) {
+    const plan = await this.prisma.platformPlan.findUnique({ where: { id } });
+    if (!plan) throw new NotFoundException('Tier not found');
+
+    const licences = await this.prisma.tenantLicense.count({
+      where: { planId: id },
+    });
+    if (licences > 0) {
+      throw new ConflictException(
+        `${licences} licence(s) still point at this tier. Move those schools to another tier before deleting it.`,
+      );
+    }
+
+    await this.prisma.platformPlan.delete({ where: { id } });
+
+    await this.audit(actor, {
+      action: 'platform.tier.deleted',
+      entityType: 'platform_plan',
+      entityId: id,
+      oldValues: {
+        code: plan.code,
+        name: plan.name,
+        price: Number(plan.price),
+        currency: plan.currency,
+        durationDays: plan.durationDays,
+      },
+    });
+
+    return { id, code: plan.code, name: plan.name, deleted: true };
+  }
+
   async subscriptions() {
     const tenants = await this.prisma.tenant.findMany({
       select: {

@@ -63,6 +63,13 @@ export class PlatformTenantsController {
     return this.platformTenantsService.detail(id);
   }
 
+  @Post('tenants/:id/unarchive')
+  @UseGuards(PlatformRoleGuard)
+  @PlatformRoles('SUPER_ADMIN')
+  unarchive(@Param('id', ParseUUIDPipe) id: string, @Req() request: Request) {
+    return this.platformTenantsService.unarchive(id, platformActor(request));
+  }
+
   @Patch('tenants/:id/status')
   @UseGuards(PlatformRoleGuard)
   @PlatformRoles('SUPER_ADMIN')

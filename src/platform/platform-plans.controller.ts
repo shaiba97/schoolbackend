@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { PlatformAdminGuard } from './platform-admin.guard';
@@ -46,11 +57,20 @@ export class PlatformPlansController {
     return this.platformPlansService.updateTier(id, dto, platformActor(request));
   }
 
+  @Delete(':id')
+  @UseGuards(PlatformRoleGuard)
+  @PlatformRoles('SUPER_ADMIN')
+  deleteTier(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ) {
+    return this.platformPlansService.deleteTier(id, platformActor(request));
+  }
+
   @Get('subscriptions')
   subscriptions() {
     return this.platformPlansService.subscriptions();
   }
-
   @Post('subscriptions/:tenantId/renew')
   @UseGuards(PlatformRoleGuard)
   @PlatformRoles('SUPER_ADMIN')

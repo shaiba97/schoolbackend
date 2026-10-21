@@ -21,6 +21,7 @@ function build(overrides: Record<string, unknown> = {}) {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: PLAN_ID, code: 'TIER-X' }),
       update: jest.fn().mockResolvedValue({ id: PLAN_ID, code: 'TIER-X' }),
+      delete: jest.fn().mockResolvedValue({ id: PLAN_ID, code: 'TIER-X' }),
     },
     tenant: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -32,6 +33,7 @@ function build(overrides: Record<string, unknown> = {}) {
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({ id: LICENSE_ID, status: 'ACTIVE' }),
       create: jest.fn().mockResolvedValue({ id: LICENSE_ID }),
+      count: jest.fn().mockResolvedValue(0),
     },
     tenantModule: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -191,6 +193,57 @@ describe('PlatformPlansService.updateTier', () => {
     (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue(null);
 
     await expect(service.updateTier(PLAN_ID, { price: 10 }, actor)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});
+
+describe('PlatformPlansService.deleteTier', () => {
+  it('deletes a tier that no school holds', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'TIER-X',
+      name: 'Tier X',
+      price: 100,
+      currency: 'USD',
+      durationDays: 365,
+    });
+    (prisma.tenantLicense.count as jest.Mock).mockResolvedValue(0);
+
+    const result = await service.deleteTier(PLAN_ID, actor);
+
+    expect(result).toMatchObject({ id: PLAN_ID, code: 'TIER-X', deleted: true });
+    expect(prisma.platformPlan.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PLAN_ID } }),
+    );
+    expect(prisma.platformAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'platform.tier.deleted' }),
+      }),
+    );
+  });
+
+  it('refuses to delete a tier that licences still point at', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'TIER-X',
+      name: 'Tier X',
+    });
+    (prisma.tenantLicense.count as jest.Mock).mockResolvedValue(2);
+
+    await expect(service.deleteTier(PLAN_ID, actor)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.platformPlan.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete an unknown tier', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(service.deleteTier(PLAN_ID, actor)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
