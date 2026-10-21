@@ -8,6 +8,12 @@ import { PlatformTenantsController } from './platform-tenants.controller';
 import { PlatformTenantsService } from './platform-tenants.service';
 import { PlatformOpsService } from './platform-ops.service';
 import { PlatformProvisioningService } from './platform-provisioning.service';
+import { PlatformFinancialsService } from './platform-financials.service';
+import { PlatformFinancialsController } from './platform-financials.controller';
+import {
+  ManualPaymentGatewayAdapter,
+  PaymentGatewayRegistry,
+} from './payment-gateway.adapter';
 import { PlatformAuditController } from './platform-audit.controller';
 import { PlatformAnnouncementsController } from './platform-announcements.controller';
 
@@ -22,12 +28,16 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
     PlatformTenantsController,
     PlatformAuditController,
     PlatformAnnouncementsController,
+    PlatformFinancialsController,
   ],
   providers: [
     PlatformAuthService,
     PlatformTenantsService,
     PlatformOpsService,
     PlatformProvisioningService,
+    PlatformFinancialsService,
+    ManualPaymentGatewayAdapter,
+    PaymentGatewayRegistry,
     PlatformAdminGuard,
     PlatformRoleGuard,
   ],
