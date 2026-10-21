@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { PlatformAuthController } from './platform-auth.controller';
 import { PlatformAuthService } from './platform-auth.service';
 import { PlatformAdminGuard } from './platform-admin.guard';
@@ -10,6 +11,8 @@ import { PlatformOpsService } from './platform-ops.service';
 import { PlatformProvisioningService } from './platform-provisioning.service';
 import { PlatformFinancialsService } from './platform-financials.service';
 import { PlatformFinancialsController } from './platform-financials.controller';
+import { PlatformHealthService } from './platform-health.service';
+import { PlatformHealthController } from './platform-health.controller';
 import { PlatformPlansService } from './platform-plans.service';
 import { PlatformPlansController } from './platform-plans.controller';
 import { PlatformExpirationService } from './platform-expiration.service';
@@ -25,7 +28,7 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
  * escape hatch it needs bypasses membership checks via the platform JWT scope.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, RealtimeModule],
   controllers: [
     PlatformAuthController,
     PlatformTenantsController,
@@ -33,6 +36,7 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
     PlatformAnnouncementsController,
     PlatformFinancialsController,
     PlatformPlansController,
+    PlatformHealthController,
   ],
   providers: [
     PlatformAuthService,
@@ -42,6 +46,7 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
     PlatformFinancialsService,
     PlatformPlansService,
     PlatformExpirationService,
+    PlatformHealthService,
     ManualPaymentGatewayAdapter,
     PaymentGatewayRegistry,
     PlatformAdminGuard,

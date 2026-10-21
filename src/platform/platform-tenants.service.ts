@@ -217,6 +217,7 @@ export class PlatformTenantsService {
     return {
       id: tenant.id,
       name: tenant.name,
+      nameAr: tenant.nameAr ?? null,
       slug: tenant.slug,
       status: tenant.status,
       email: tenant.email,
@@ -444,6 +445,7 @@ export class PlatformTenantsService {
   private toListItem(tenant: {
     id: string;
     name: string;
+    nameAr?: string | null;
     slug: string;
     status: string;
     email: string | null;
@@ -470,6 +472,7 @@ export class PlatformTenantsService {
     return {
       id: tenant.id,
       name: tenant.name,
+      nameAr: tenant.nameAr ?? null,
       slug: tenant.slug,
       status: tenant.status,
       email: tenant.email,

@@ -107,6 +107,26 @@ async function main() {
     .get(`/api/platform/tenants/${tenantId}`)
     .set('Authorization', auth);
   check('tenant detail returns 200', detail.status === 200, `status=${detail.status}`);
+
+  if (detail.body?.status === 'ARCHIVED') {
+    // A previous run may have left the school in the archive. The archive is
+    // terminal for the ordinary status flow, so it takes the explicit
+    // restore action to make the school usable again.
+    const restored = await request(server)
+      .post(`/api/platform/tenants/${tenantId}/unarchive`)
+      .set('Authorization', auth);
+    check(
+      'an archived school is restored before the checks run',
+      restored.status === 201,
+      `status=${restored.status}`,
+    );
+    await request(server)
+      .get(`/api/platform/tenants/${tenantId}`)
+      .set('Authorization', auth)
+      .then((response) => {
+        detail.body = response.body;
+      });
+  }
   check(
     'tenant detail includes modules, flags, counts, and activity',
     Array.isArray(detail.body?.modules) &&
@@ -191,11 +211,18 @@ async function main() {
     archived.status === 400 || archived.status === 200,
     `status=${archived.status}`,
   );
+
   if (archived.status === 200) {
-    await request(server)
-      .patch(`/api/platform/tenants/${tenantId}/status`)
-      .set('Authorization', auth)
-      .send({ status: originalStatus });
+    // The archive is terminal for the ordinary status flow, so restoring the
+    // school means the explicit restore action.
+    const restored = await request(server)
+      .post(`/api/platform/tenants/${tenantId}/unarchive`)
+      .set('Authorization', auth);
+    check(
+      'an archived school can be restored',
+      restored.status === 201 && restored.body?.status === 'ACTIVE',
+      `status=${restored.status} body=${JSON.stringify(restored.body)}`,
+    );
   }
 
   const anonymous = await request(server).get('/api/platform/stats');
