@@ -45,9 +45,13 @@ export class CreateTierDto {
   @MaxLength(200)
   target?: string;
 
-  @ApiProperty({ enum: ['ANNUAL', 'LIFETIME'] })
-  @IsEnum(['ANNUAL', 'LIFETIME'])
-  billingModel!: 'ANNUAL' | 'LIFETIME';
+  @ApiProperty({
+    enum: ['ANNUAL'],
+    description:
+      'A tier is always billed yearly. The term length is set by durationDays.',
+  })
+  @IsEnum(['ANNUAL'])
+  billingModel!: 'ANNUAL';
 
   @ApiProperty()
   @Type(() => Number)
@@ -166,6 +170,16 @@ export class RenewSubscriptionDto {
   @IsInt()
   @Min(0)
   studentCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Price per student per month for this licence. Overrides the tier price, which is what a quoted tier needs.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  pricePerStudent?: number;
 }
 
 export class UpgradeSubscriptionDto {
@@ -178,4 +192,14 @@ export class UpgradeSubscriptionDto {
   @Type(() => Date)
   @IsDate()
   expiresAt?: Date;
+
+  @ApiPropertyOptional({
+    description:
+      'Price per student per month for this licence. Overrides the tier price, which is what a quoted tier needs.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  pricePerStudent?: number;
 }

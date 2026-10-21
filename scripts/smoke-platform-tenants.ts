@@ -265,6 +265,11 @@ async function main() {
       Boolean(row?.expiresAt) && typeof row?.monthlyUsd === 'number',
       `expiresAt=${row?.expiresAt} monthlyUsd=${row?.monthlyUsd} students=${row?.studentCount}`,
     );
+    check(
+      'the monthly amount is the rate times the students',
+      row?.monthlyUsd === row?.price * (row?.studentCount || 1),
+      `monthlyUsd=${row?.monthlyUsd} price=${row?.price} students=${row?.studentCount}`,
+    );
 
     const renewed = await request(server)
       .post(`/api/platform/plans/subscriptions/${tenantId}/renew`)

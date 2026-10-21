@@ -14,7 +14,7 @@ export type TierInput = {
   name: string;
   tier: 'PRIMARY' | 'INTERMEDIATE' | 'ADVANCED' | 'CUSTOM';
   target?: string;
-  billingModel: 'ANNUAL' | 'LIFETIME';
+  billingModel: 'ANNUAL';
   price: number;
   priceMax?: number | null;
   currency: string;
@@ -213,6 +213,7 @@ export class PlatformPlansService {
             expiresAt: true,
             terminatedAt: true,
             seats: true,
+            pricePerStudent: true,
             plan: {
               select: {
                 id: true,
@@ -272,13 +273,21 @@ export class PlatformPlansService {
         tierName: plan?.name ?? null,
         tierLabel: plan?.tier ?? null,
         // The tier price is per student per month, so the monthly amount is
-        // the rate times the licensed students.
-        price: plan ? Number(plan.price) : null,
+        // the rate times the licensed students. A licence may carry its own
+        // rate, which is how a quoted tier bills.
+        price: plan
+          ? license?.pricePerStudent !== null && license?.pricePerStudent !== undefined
+            ? Number(license.pricePerStudent)
+            : Number(plan.price)
+          : null,
         currency: plan?.currency ?? 'USD',
         studentCount: license?.seats ?? 0,
         monthlyUsd: plan
           ? round2(
-              Number(plan.price) * (license?.seats && license.seats > 0 ? license.seats : 1),
+              (license?.pricePerStudent !== null && license?.pricePerStudent !== undefined
+                ? Number(license.pricePerStudent)
+                : Number(plan.price)) *
+                (license?.seats && license.seats > 0 ? license.seats : 1),
             )
           : 0,
         startedAt: license?.startedAt ?? null,
@@ -294,7 +303,12 @@ export class PlatformPlansService {
 
   async renew(
     tenantId: string,
-    input: { expiresAt?: Date; licenseId?: string; studentCount?: number },
+    input: {
+      expiresAt?: Date;
+      licenseId?: string;
+      studentCount?: number;
+      pricePerStudent?: number;
+    },
     actor: PlatformActor,
   ) {
     const tenant = await this.tenantWithLicenses(tenantId, input.licenseId);
@@ -316,6 +330,9 @@ export class PlatformPlansService {
         // may carry a new one.
         ...(input.studentCount !== undefined
           ? { seats: input.studentCount > 0 ? input.studentCount : null }
+          : {}),
+        ...(input.pricePerStudent !== undefined
+          ? { pricePerStudent: input.pricePerStudent }
           : {}),
       },
     });
@@ -387,7 +404,7 @@ export class PlatformPlansService {
 
   async upgrade(
     tenantId: string,
-    input: { planId: string; expiresAt?: Date },
+    input: { planId: string; expiresAt?: Date; pricePerStudent?: number },
     actor: PlatformActor,
   ) {
     const plan = await this.prisma.platformPlan.findUnique({
@@ -436,6 +453,11 @@ export class PlatformPlansService {
       data: {
         planId: plan.id,
         expiresAt: termEndsAt,
+        // A quoted tier has no list price, so the agreed rate is carried by
+        // the licence.
+        ...(input.pricePerStudent !== undefined
+          ? { pricePerStudent: input.pricePerStudent }
+          : {}),
       },
     });
 
@@ -542,6 +564,13 @@ export class PlatformPlansService {
     }
     if (!Number.isInteger(input.durationDays) || input.durationDays <= 0) {
       throw new BadRequestException('The term must be a positive number of days');
+    }
+    // A tier is a year that ends. A plan that never ends is a plan the
+    // platform cannot charge for again.
+    if (input.billingModel !== 'ANNUAL') {
+      throw new BadRequestException(
+        'A tier is billed yearly. The term length is set by the number of days.',
+      );
     }
   }
 

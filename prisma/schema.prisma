@@ -2979,6 +2979,11 @@ model TenantLicense {
   expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
   seats     Int?
 
+  // The price per student this licence actually bills. It overrides the
+  // tier's list price, which is what a quoted tier needs: the tier says
+  // "price on request" and the licence carries the agreed rate.
+  pricePerStudent Decimal? @map("price_per_student") @db.Decimal(12, 2)
+
   notes String? @db.VarChar(400)
 
   // Set when the license is ended early (manual termination) or by the

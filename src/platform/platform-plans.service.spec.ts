@@ -158,6 +158,27 @@ describe('PlatformPlansService.createTier', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('refuses a tier that never ends', async () => {
+    const { service } = build();
+
+    await expect(
+      service.createTier(
+        {
+          code: 'FOREVER',
+          name: 'Forever',
+          tier: 'CUSTOM',
+          billingModel: 'LIFETIME' as never,
+          price: 1,
+          currency: 'USD',
+          durationDays: 365,
+          includedModules: [],
+          features: {},
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
 
 describe('PlatformPlansService.updateTier', () => {
@@ -322,8 +343,7 @@ describe('PlatformPlansService.subscriptions', () => {
     expect(rows[0].lockReason).toBe('LICENSE_EXPIRED');
   });
 
-  it('reports the licensed students and the monthly amount', async () => {
-    const { service, prisma } = build();
+  it('reports the licensed students and the monthly amount', async () => {    const { service, prisma } = build();
     (prisma.tenant.findMany as jest.Mock).mockResolvedValue([
       {
         id: TENANT_ID,
@@ -363,7 +383,6 @@ describe('PlatformPlansService.subscriptions', () => {
     // 800 per student per month, 400 students.
     expect(rows[0].monthlyUsd).toBe(320000);
   });
-
   it('reports a subscription with no licence as having no students', async () => {
     const { service, prisma } = build();
     (prisma.tenant.findMany as jest.Mock).mockResolvedValue([
@@ -386,6 +405,48 @@ describe('PlatformPlansService.subscriptions', () => {
     expect(rows[0].status).toBe('NO_LICENSE');
     expect(rows[0].studentCount).toBe(0);
     expect(rows[0].monthlyUsd).toBe(0);
+  });
+
+  it('bills the rate the licence carries, not the tier list price', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: TENANT_ID,
+        name: 'Springfield Academy',
+        slug: 'springfield',
+        countryCode: 'SA',
+        currencyCode: 'SAR',
+        status: 'ACTIVE',
+        logoUrl: null,
+        lockedAt: null,
+        lockReason: null,
+        licenses: [
+          {
+            id: LICENSE_ID,
+            status: 'ACTIVE',
+            startedAt: new Date('2026-01-01'),
+            expiresAt: new Date('2026-12-31'),
+            terminatedAt: null,
+            seats: 100,
+            pricePerStudent: 950,
+            plan: {
+              id: PLAN_ID,
+              code: 'CUSTOM',
+              name: 'Customized Plan',
+              tier: 'CUSTOM',
+              price: 0,
+              currency: 'USD',
+              durationDays: 365,
+            },
+          },
+        ],
+      },
+    ]);
+
+    const rows = await service.subscriptions();
+
+    expect(rows[0].price).toBe(950);
+    expect(rows[0].monthlyUsd).toBe(95000);
   });
 });
 
@@ -458,6 +519,36 @@ describe('PlatformPlansService.renew', () => {
     const days = Math.round((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
     expect(days).toBeGreaterThanOrEqual(89);
     expect(days).toBeLessThanOrEqual(90);
+  });
+
+  it('can carry a quoted rate into the renewal', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          plan: { id: PLAN_ID, code: 'CUSTOM', durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.renew(TENANT_ID, { pricePerStudent: 725 }, actor);
+
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ pricePerStudent: 725 }),
+      }),
+    );
   });
 
   it('refuses to renew a school with no licence', async () => {

@@ -195,6 +195,7 @@ export class PlatformFinancialsService {
               startedAt: true,
               expiresAt: true,
               seats: true,
+              pricePerStudent: true,
               plan: {
                 select: { code: true, name: true, price: true, currency: true },
               },
@@ -220,9 +221,15 @@ export class PlatformFinancialsService {
       const license = tenant.licenses[0] ?? null;
       const plan = license?.plan ?? null;
       // The tier price is per student per month, so the monthly amount is
-      // the rate times the licensed student count.
+      // the rate times the licensed student count. A licence may carry its
+      // own rate, which is how a quoted tier bills.
       const studentCount = license?.seats ?? 0;
-      const pricePerStudent = plan ? Number(plan.price) : 0;
+      const pricePerStudent =
+        license?.pricePerStudent !== null && license?.pricePerStudent !== undefined
+          ? Number(license.pricePerStudent)
+          : plan
+            ? Number(plan.price)
+            : 0;
       const priceUsd = pricePerStudent * (studentCount > 0 ? studentCount : 1);
       const currency = tenant.currencyCode || 'USD';
       const rate = rateOf(currency);
