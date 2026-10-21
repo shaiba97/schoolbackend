@@ -213,7 +213,7 @@ export class PlatformPlansService {
             expiresAt: true,
             terminatedAt: true,
             seats: true,
-            pricePerStudent: true,
+            monthlyPrice: true,
             plan: {
               select: {
                 id: true,
@@ -272,22 +272,20 @@ export class PlatformPlansService {
         tier: plan?.code ?? null,
         tierName: plan?.name ?? null,
         tierLabel: plan?.tier ?? null,
-        // The tier price is per student per month, so the monthly amount is
-        // the rate times the licensed students. A licence may carry its own
-        // rate, which is how a quoted tier bills.
+        // A tier price is the school's monthly amount. A licence may carry
+        // its own rate, which is how a quoted tier bills.
         price: plan
-          ? license?.pricePerStudent !== null && license?.pricePerStudent !== undefined
-            ? Number(license.pricePerStudent)
+          ? license?.monthlyPrice !== null && license?.monthlyPrice !== undefined
+            ? Number(license.monthlyPrice)
             : Number(plan.price)
           : null,
         currency: plan?.currency ?? 'USD',
         studentCount: license?.seats ?? 0,
         monthlyUsd: plan
           ? round2(
-              (license?.pricePerStudent !== null && license?.pricePerStudent !== undefined
-                ? Number(license.pricePerStudent)
-                : Number(plan.price)) *
-                (license?.seats && license.seats > 0 ? license.seats : 1),
+              license?.monthlyPrice !== null && license?.monthlyPrice !== undefined
+                ? Number(license.monthlyPrice)
+                : Number(plan.price),
             )
           : 0,
         startedAt: license?.startedAt ?? null,
@@ -307,7 +305,7 @@ export class PlatformPlansService {
       expiresAt?: Date;
       licenseId?: string;
       studentCount?: number;
-      pricePerStudent?: number;
+      monthlyPrice?: number;
     },
     actor: PlatformActor,
   ) {
@@ -331,8 +329,8 @@ export class PlatformPlansService {
         ...(input.studentCount !== undefined
           ? { seats: input.studentCount > 0 ? input.studentCount : null }
           : {}),
-        ...(input.pricePerStudent !== undefined
-          ? { pricePerStudent: input.pricePerStudent }
+        ...(input.monthlyPrice !== undefined
+          ? { monthlyPrice: input.monthlyPrice }
           : {}),
       },
     });
@@ -404,7 +402,7 @@ export class PlatformPlansService {
 
   async upgrade(
     tenantId: string,
-    input: { planId: string; expiresAt?: Date; pricePerStudent?: number },
+    input: { planId: string; expiresAt?: Date; monthlyPrice?: number },
     actor: PlatformActor,
   ) {
     const plan = await this.prisma.platformPlan.findUnique({
@@ -455,8 +453,8 @@ export class PlatformPlansService {
         expiresAt: termEndsAt,
         // A quoted tier has no list price, so the agreed rate is carried by
         // the licence.
-        ...(input.pricePerStudent !== undefined
-          ? { pricePerStudent: input.pricePerStudent }
+        ...(input.monthlyPrice !== undefined
+          ? { monthlyPrice: input.monthlyPrice }
           : {}),
       },
     });

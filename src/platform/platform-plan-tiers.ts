@@ -43,11 +43,22 @@ export const FEATURE_LABELS: Record<string, string> = {
   dedicatedSla: 'Dedicated SLA',
 };
 
+const ALL_PORTALS: PortalModule[] = [
+  PortalModule.ADMIN,
+  PortalModule.ACADEMIC,
+  PortalModule.FINANCIAL,
+  PortalModule.TEACHER,
+  PortalModule.GUARDIAN,
+  PortalModule.STUDENT,
+  PortalModule.TRANSPORT,
+  PortalModule.RECEPTION,
+];
+
 /**
- * The platform tier catalogue. Prices are list prices in USD; a tier with a
- * range carries the entry price in `price` and the ceiling in `priceMax`.
- * This is business data rather than schema, so it ships here and is applied
- * by scripts/seed-platform-plans.mjs.
+ * The platform tier catalogue. Prices are the school's monthly amount in
+ * USD; a tier with a range carries the entry price in `price` and the
+ * ceiling in `priceMax`. This is business data rather than schema, so it
+ * ships here and is applied by scripts/seed-platform-plans.ts.
  */
 export const PLAN_TIERS: PlanTierDefinition[] = [
   {
@@ -121,6 +132,7 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
       PortalModule.GUARDIAN,
       PortalModule.STUDENT,
       PortalModule.TRANSPORT,
+      PortalModule.RECEPTION,
     ],
     features: {
       standardAttendance: true,
@@ -142,7 +154,7 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
     tier: PlanTier.CUSTOM,
     target: 'School groups and multi-campus networks.',
     billingModel: BillingModel.ANNUAL,
-    // Quote-based: no list price.
+    // Quote-based: no list price. The agreed rate is carried by the licence.
     price: 0,
     priceMax: null,
     currency: 'USD',
@@ -156,6 +168,7 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
       PortalModule.GUARDIAN,
       PortalModule.STUDENT,
       PortalModule.TRANSPORT,
+      PortalModule.RECEPTION,
     ],
     features: {
       bespokeConfiguration: true,

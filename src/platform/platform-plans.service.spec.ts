@@ -380,8 +380,9 @@ describe('PlatformPlansService.subscriptions', () => {
     const rows = await service.subscriptions();
 
     expect(rows[0].studentCount).toBe(400);
-    // 800 per student per month, 400 students.
-    expect(rows[0].monthlyUsd).toBe(320000);
+    // The tier price is the school's monthly amount: 800 a month, whatever
+    // the school size.
+    expect(rows[0].monthlyUsd).toBe(800);
   });
   it('reports a subscription with no licence as having no students', async () => {
     const { service, prisma } = build();
@@ -428,7 +429,7 @@ describe('PlatformPlansService.subscriptions', () => {
             expiresAt: new Date('2026-12-31'),
             terminatedAt: null,
             seats: 100,
-            pricePerStudent: 950,
+            monthlyPrice: 950,
             plan: {
               id: PLAN_ID,
               code: 'CUSTOM',
@@ -446,7 +447,7 @@ describe('PlatformPlansService.subscriptions', () => {
     const rows = await service.subscriptions();
 
     expect(rows[0].price).toBe(950);
-    expect(rows[0].monthlyUsd).toBe(95000);
+    expect(rows[0].monthlyUsd).toBe(950);
   });
 });
 
@@ -541,12 +542,12 @@ describe('PlatformPlansService.renew', () => {
       ],
     });
 
-    await service.renew(TENANT_ID, { pricePerStudent: 725 }, actor);
+    await service.renew(TENANT_ID, { monthlyPrice: 725 }, actor);
 
     expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: LICENSE_ID },
-        data: expect.objectContaining({ pricePerStudent: 725 }),
+        data: expect.objectContaining({ monthlyPrice: 725 }),
       }),
     );
   });

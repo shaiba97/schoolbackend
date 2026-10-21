@@ -42,7 +42,7 @@ async function main() {
     const students = Math.max(licence.tenant._count.students, MINIMUM_STUDENTS);
     const hasTerm = Boolean(licence.expiresAt);
     const hasStudents = Boolean(licence.seats);
-    const hasRate = licence.pricePerStudent !== null;
+    const hasRate = licence.monthlyPrice !== null;
 
     if (hasTerm && hasStudents && hasRate) {
       skipped += 1;
@@ -54,15 +54,39 @@ async function main() {
     const data = {
       expiresAt,
       seats: licence.seats ?? students,
-      pricePerStudent: licence.pricePerStudent ?? licence.plan.price,
+      monthlyPrice: licence.monthlyPrice ?? licence.plan.price,
       status: 'ACTIVE' as const,
       terminatedAt: null,
       terminationReason: null,
     };
 
+    // The tier decides the portals the school gets, so the school's switches
+    // follow its tier.
+    const included = new Set(licence.plan.includedModules);
+    const existing = await prisma.tenantModule.findMany({
+      where: { tenantId: licence.tenantId },
+      select: { module: true },
+    });
+    for (const row of existing) {
+      const shouldBeOn = included.has(row.module);
+      if (shouldBeOn) continue;
+      await prisma.tenantModule.upsert({
+        where: { tenantId_module: { tenantId: licence.tenantId, module: row.module } },
+        create: { tenantId: licence.tenantId, module: row.module, enabled: false },
+        update: { enabled: false },
+      });
+    }
+    for (const module of licence.plan.includedModules) {
+      await prisma.tenantModule.upsert({
+        where: { tenantId_module: { tenantId: licence.tenantId, module } },
+        create: { tenantId: licence.tenantId, module, enabled: true },
+        update: { enabled: true },
+      });
+    }
+
     if (dryRun) {
       console.log(
-        `would set ${licence.tenant.name}: term ${expiresAt.toISOString().slice(0, 10)}, ${data.seats} students at ${data.pricePerStudent}`,
+        `would set ${licence.tenant.name}: term ${expiresAt.toISOString().slice(0, 10)}, ${data.seats} students at ${data.monthlyPrice}`,
       );
     } else {
       await prisma.tenantLicense.update({ where: { id: licence.id }, data });
@@ -75,12 +99,12 @@ async function main() {
           oldValues: {
             expiresAt: licence.expiresAt,
             seats: licence.seats,
-            pricePerStudent: licence.pricePerStudent,
+            monthlyPrice: licence.monthlyPrice,
           },
           newValues: {
             expiresAt: data.expiresAt,
             seats: data.seats,
-            pricePerStudent: data.pricePerStudent,
+            monthlyPrice: data.monthlyPrice,
             planCode: licence.plan.code,
           },
         },
@@ -89,7 +113,7 @@ async function main() {
 
     fixed += 1;
     console.log(
-      `${dryRun ? 'would set' : 'set'} ${licence.tenant.name}: term ${expiresAt.toISOString().slice(0, 10)}, ${data.seats} students at ${data.pricePerStudent}`,
+      `${dryRun ? 'would set' : 'set'} ${licence.tenant.name}: term ${expiresAt.toISOString().slice(0, 10)}, ${data.seats} students at ${data.monthlyPrice}`,
     );
   }
 

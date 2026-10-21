@@ -266,8 +266,8 @@ async function main() {
       `expiresAt=${row?.expiresAt} monthlyUsd=${row?.monthlyUsd} students=${row?.studentCount}`,
     );
     check(
-      'the monthly amount is the rate times the students',
-      row?.monthlyUsd === row?.price * (row?.studentCount || 1),
+      'the monthly amount is the tier price, whatever the school size',
+      row?.monthlyUsd === row?.price,
       `monthlyUsd=${row?.monthlyUsd} price=${row?.price} students=${row?.studentCount}`,
     );
 

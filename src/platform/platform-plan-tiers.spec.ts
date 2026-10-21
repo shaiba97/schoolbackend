@@ -60,6 +60,7 @@ describe('PLAN_TIERS', () => {
       'GUARDIAN',
       'STUDENT',
       'TRANSPORT',
+      'RECEPTION',
     ]);
   });
 

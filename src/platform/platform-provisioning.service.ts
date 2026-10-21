@@ -42,6 +42,7 @@ const ALL_MODULES: PortalModule[] = [
   'GUARDIAN',
   'STUDENT',
   'TRANSPORT',
+  'RECEPTION',
 ];
 
 /**
@@ -184,9 +185,8 @@ export class PlatformProvisioningService {
       return { tenant, user, license, plan, slug };
     });
 
-    const monthlyUsd = plan
-      ? Number(plan.price) * (studentCount > 0 ? studentCount : 1)
-      : 0;
+    // The tier price is the school's monthly amount.
+    const monthlyUsd = plan ? Number(plan.price) : 0;
 
     await this.prisma.platformAuditLog.create({
       data: {

@@ -195,7 +195,7 @@ export class PlatformFinancialsService {
               startedAt: true,
               expiresAt: true,
               seats: true,
-              pricePerStudent: true,
+              monthlyPrice: true,
               plan: {
                 select: { code: true, name: true, price: true, currency: true },
               },
@@ -220,17 +220,16 @@ export class PlatformFinancialsService {
     return tenants.map((tenant) => {
       const license = tenant.licenses[0] ?? null;
       const plan = license?.plan ?? null;
-      // The tier price is per student per month, so the monthly amount is
-      // the rate times the licensed student count. A licence may carry its
+      // A tier price is the school's monthly amount. A licence may carry its
       // own rate, which is how a quoted tier bills.
       const studentCount = license?.seats ?? 0;
-      const pricePerStudent =
-        license?.pricePerStudent !== null && license?.pricePerStudent !== undefined
-          ? Number(license.pricePerStudent)
+      const monthlyPrice =
+        license?.monthlyPrice !== null && license?.monthlyPrice !== undefined
+          ? Number(license.monthlyPrice)
           : plan
             ? Number(plan.price)
             : 0;
-      const priceUsd = pricePerStudent * (studentCount > 0 ? studentCount : 1);
+      const priceUsd = monthlyPrice;
       const currency = tenant.currencyCode || 'USD';
       const rate = rateOf(currency);
       // Without a rate the local price cannot be computed. Showing the USD
@@ -266,7 +265,7 @@ export class PlatformFinancialsService {
         tierName: plan?.name ?? null,
         licenseId: license?.id ?? null,
         studentCount,
-        pricePerStudent,
+        monthlyPrice,
         startedAt: license?.startedAt ?? null,
         expiresAt: license?.expiresAt ?? null,
         currency,
@@ -300,7 +299,7 @@ export class PlatformFinancialsService {
   async updateCurrency(
     code: string,
     input: { rateToUsd: number; autoSync?: boolean },
-    actor?: PlatformActor,
+    actor: PlatformActor,
   ) {
     if (!Number.isFinite(input.rateToUsd) || input.rateToUsd <= 0) {
       throw new BadRequestException(
@@ -322,21 +321,19 @@ export class PlatformFinancialsService {
       },
     });
 
-    if (actor) {
-      // A rate change moves every converted figure in the console, so it is
-      // recorded the same way a payment or an expense is. The currency code
-      // is not a uuid, so it travels in the payload rather than in entityId.
-      await this.audit(actor, {
-        action: 'platform.currency.updated',
-        entityType: 'platform_currency',
-        newValues: {
-          code,
-          rateToUsd: input.rateToUsd,
-          autoSync: updated.autoSync,
-          previousRateToUsd: Number(existing.rateToUsd),
-        },
-      });
-    }
+    // A rate change moves every converted figure in the console, so it is
+    // recorded the same way a payment or an expense is. The actor is
+    // required, so there is no path that changes a rate silently.
+    await this.audit(actor, {
+      action: 'platform.currency.updated',
+      entityType: 'platform_currency',
+      newValues: {
+        code,
+        rateToUsd: input.rateToUsd,
+        autoSync: updated.autoSync,
+        previousRateToUsd: Number(existing.rateToUsd),
+      },
+    });
 
     return {
       code: updated.code,

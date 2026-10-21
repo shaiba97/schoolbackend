@@ -6,17 +6,18 @@ import {
 
 describe('CURRENCY_CATALOGUE', () => {
   it('covers the base currency and every supported market', () => {
-    expect(CURRENCY_CATALOGUE.map((currency) => currency.code)).toEqual([
-      'USD',
-      'EUR',
-      'SDG',
+    expect([...CURRENCY_CATALOGUE.map((currency) => currency.code)].sort()).toEqual([
+      'AED',
       'BHD',
+      'EGP',
+      'EUR',
       'IQD',
       'KWD',
       'OMR',
       'QAR',
       'SAR',
-      'AED',
+      'SDG',
+      'USD',
     ]);
   });
 

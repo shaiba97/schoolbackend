@@ -171,6 +171,7 @@ describe('PlatformProvisioningService.provision', () => {
       'GUARDIAN',
       'STUDENT',
       'TRANSPORT',
+      'RECEPTION',
     ]);
     expect(Object.keys(result.featureFlags)).toHaveLength(5);
   });
@@ -180,8 +181,8 @@ describe('PlatformProvisioningService.provision', () => {
 
     const result = await service.provision(validInput, actor);
 
-    // 800 USD per student per month, 400 students.
-    expect(result.license?.monthlyUsd).toBe(320000);
+    // The tier price is the school's monthly amount.
+    expect(result.license?.monthlyUsd).toBe(800);
     expect(result.license?.studentCount).toBe(400);
   });
 

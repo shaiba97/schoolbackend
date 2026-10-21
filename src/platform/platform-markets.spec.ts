@@ -1,10 +1,11 @@
 import { MARKETS, marketByCode, marketDefaults } from './platform-markets';
 
 describe('MARKETS', () => {
-  it('covers the eight markets the platform sells into', () => {
+  it('covers the markets the platform sells into', () => {
     expect(MARKETS.map((market) => market.code)).toEqual([
       'SD',
       'BH',
+      'EG',
       'IQ',
       'KW',
       'OM',

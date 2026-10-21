@@ -36,6 +36,14 @@ export const MARKETS: MarketDefinition[] = [
     dialCode: '+973',
   },
   {
+    code: 'EG',
+    name: 'Egypt',
+    nameAr: 'مصر',
+    currency: 'EGP',
+    timezone: 'Africa/Cairo',
+    dialCode: '+20',
+  },
+  {
     code: 'IQ',
     name: 'Iraq',
     nameAr: 'العراق',

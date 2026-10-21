@@ -135,8 +135,8 @@ async function main() {
   );
 
   check(
-    'the subscription is priced per student per month',
-    created.body?.license?.monthlyUsd === 120 * (plans.body?.[0]?.price ?? 0),
+    'the subscription is priced per month',
+    created.body?.license?.monthlyUsd === (plans.body?.[0]?.price ?? 0),
     `monthly=${created.body?.license?.monthlyUsd} price=${plans.body?.[0]?.price}`,
   );
 
@@ -197,7 +197,7 @@ async function main() {
     'the school gets every portal and every feature flag',
     detail.status === 200 &&
       (detail.body?.modules ?? []).filter((row: { enabled: boolean }) => row.enabled).length ===
-        7 &&
+        8 &&
       (detail.body?.featureFlags ?? []).length === 5 &&
       (detail.body?.licenses ?? []).length === 1,
     JSON.stringify({

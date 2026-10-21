@@ -179,7 +179,7 @@ export class RenewSubscriptionDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  pricePerStudent?: number;
+  monthlyPrice?: number;
 }
 
 export class UpgradeSubscriptionDto {
@@ -201,5 +201,5 @@ export class UpgradeSubscriptionDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  pricePerStudent?: number;
+  monthlyPrice?: number;
 }

@@ -53,6 +53,14 @@ export const CURRENCY_CATALOGUE: CurrencyDefinition[] = [
     autoSync: true,
   },
   {
+    code: 'EGP',
+    name: 'Egyptian Pound',
+    countryCode: 'EG',
+    symbol: 'ج.م',
+    defaultRateToUsd: 48.5,
+    autoSync: true,
+  },
+  {
     code: 'IQD',
     name: 'Iraqi Dinar',
     countryCode: 'IQ',

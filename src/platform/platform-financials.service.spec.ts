@@ -376,7 +376,7 @@ describe('PlatformFinancialsService.updateCurrency', () => {
     const { service } = build();
 
     await expect(
-      service.updateCurrency('SAR', { rateToUsd: 0 }),
+      service.updateCurrency('SAR', { rateToUsd: 0 }, actor),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -385,7 +385,7 @@ describe('PlatformFinancialsService.updateCurrency', () => {
     (prisma.platformCurrency.findUnique as jest.Mock).mockResolvedValue(null);
 
     await expect(
-      service.updateCurrency('XXX', { rateToUsd: 2 }),
+      service.updateCurrency('XXX', { rateToUsd: 2 }, actor),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
