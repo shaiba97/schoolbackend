@@ -9,7 +9,13 @@ import type { PlatformActor } from './platform-tenants.service';
  */
 export function platformActor(request: Request): PlatformActor {
   const admin = (
-    request as { platformAdmin?: { id: string; userId: string; role: 'SUPER_ADMIN' | 'SUPPORT' } }
+    request as {
+      platformAdmin?: {
+        id: string;
+        userId: string;
+        role: 'SUPER_ADMIN' | 'SUPPORT';
+      };
+    }
   ).platformAdmin;
 
   if (!admin) {

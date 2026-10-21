@@ -68,7 +68,9 @@ export class ProvisionTenantDto {
   @MinLength(8)
   adminPassword!: string;
 
-  @ApiPropertyOptional({ description: 'Plan code to issue the first license for' })
+  @ApiPropertyOptional({
+    description: 'Plan code to issue the first license for',
+  })
   @IsOptional()
   @IsString()
   planCode?: string;
@@ -82,7 +84,10 @@ export class ProvisionTenantDto {
   @IsEnum(PortalModule, { each: true })
   modules?: PortalModule[];
 
-  @ApiPropertyOptional({ description: 'Feature flag overrides, e.g. { "notifications.whatsapp": true }' })
+  @ApiPropertyOptional({
+    description:
+      'Feature flag overrides, e.g. { "notifications.whatsapp": true }',
+  })
   @IsOptional()
   featureFlags?: Record<string, boolean>;
 }

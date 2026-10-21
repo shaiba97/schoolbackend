@@ -13,7 +13,9 @@ export class ListAuditQueryDto {
   @IsString()
   actorId?: string;
 
-  @ApiPropertyOptional({ description: 'Case-insensitive match on the action name' })
+  @ApiPropertyOptional({
+    description: 'Case-insensitive match on the action name',
+  })
   @IsOptional()
   @IsString()
   action?: string;

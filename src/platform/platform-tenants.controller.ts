@@ -57,7 +57,10 @@ export class PlatformTenantsController {
   @UseGuards(PlatformRoleGuard)
   @PlatformRoles('SUPER_ADMIN')
   provision(@Body() dto: ProvisionTenantDto, @Req() request: Request) {
-    return this.platformProvisioningService.provision(dto, platformActor(request));
+    return this.platformProvisioningService.provision(
+      dto,
+      platformActor(request),
+    );
   }
 
   @Get('tenants/:id')

@@ -26,7 +26,9 @@ function build(overrides: Record<string, unknown> = {}) {
       count: jest.fn().mockResolvedValue(4),
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),
-      update: jest.fn().mockResolvedValue({ id: TENANT_ID, status: 'SUSPENDED' }),
+      update: jest
+        .fn()
+        .mockResolvedValue({ id: TENANT_ID, status: 'SUSPENDED' }),
     },
     tenantLicense: {
       count: jest.fn().mockResolvedValue(0),
@@ -85,7 +87,10 @@ describe('PlatformTenantsService.stats', () => {
   it('ignores lifetime licenses in MRR', async () => {
     const { service, prisma } = build();
     (prisma.tenantLicense.findMany as jest.Mock).mockResolvedValue([
-      { id: 'l1', plan: { code: 'PERP', billingModel: 'LIFETIME', price: 5000 } },
+      {
+        id: 'l1',
+        plan: { code: 'PERP', billingModel: 'LIFETIME', price: 5000 },
+      },
     ]);
 
     const stats = await service.stats();
@@ -116,13 +121,20 @@ describe('PlatformTenantsService.list', () => {
   it('filters by search term across name, slug, and email', async () => {
     const { service, prisma } = build();
 
-    await service.list({ search: 'spring', status: 'ACTIVE', page: 1, limit: 20 });
+    await service.list({
+      search: 'spring',
+      status: 'ACTIVE',
+      page: 1,
+      limit: 20,
+    });
 
     const args = (prisma.tenant.findMany as jest.Mock).mock.calls[0][0];
     expect(args.where.status).toBe('ACTIVE');
     expect(args.where.OR).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: expect.objectContaining({ mode: 'insensitive' }) }),
+        expect.objectContaining({
+          name: expect.objectContaining({ mode: 'insensitive' }),
+        }),
       ]),
     );
   });
@@ -163,7 +175,12 @@ describe('PlatformTenantsService.list', () => {
             id: 'lic-1',
             status: 'ACTIVE',
             expiresAt: null,
-            plan: { code: 'PRO', name: 'Pro', billingModel: 'ANNUAL', price: 1200 },
+            plan: {
+              code: 'PRO',
+              name: 'Pro',
+              billingModel: 'ANNUAL',
+              price: 1200,
+            },
           },
         ],
         _count: { memberships: 12, modules: 5 },
@@ -206,11 +223,18 @@ describe('PlatformTenantsService.detail', () => {
           id: 'lic-1',
           status: 'ACTIVE',
           expiresAt: null,
-          plan: { code: 'PRO', name: 'Pro', billingModel: 'ANNUAL', price: 1200 },
+          plan: {
+            code: 'PRO',
+            name: 'Pro',
+            billingModel: 'ANNUAL',
+            price: 1200,
+          },
         },
       ],
       modules: [{ id: 'm1', module: 'ADMIN', enabled: true }],
-      featureFlags: [{ id: 'f1', key: 'portal.transport.tracking', enabled: true }],
+      featureFlags: [
+        { id: 'f1', key: 'portal.transport.tracking', enabled: true },
+      ],
       _count: { memberships: 12, students: 300, teachers: 20 },
     });
 
@@ -223,7 +247,10 @@ describe('PlatformTenantsService.detail', () => {
       { id: 'f1', key: 'portal.transport.tracking', enabled: true },
     ]);
     expect(detail.counts).toEqual({ users: 12, students: 300, teachers: 20 });
-    expect(detail.licenses[0]).toMatchObject({ id: 'lic-1', plan: { code: 'PRO' } });
+    expect(detail.licenses[0]).toMatchObject({
+      id: 'lic-1',
+      plan: { code: 'PRO' },
+    });
   });
 });
 
@@ -302,7 +329,9 @@ describe('PlatformTenantsService.setModule', () => {
 
     expect(prisma.tenantModule.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId_module: { tenantId: TENANT_ID, module: 'TRANSPORT' } },
+        where: {
+          tenantId_module: { tenantId: TENANT_ID, module: 'TRANSPORT' },
+        },
         create: { tenantId: TENANT_ID, module: 'TRANSPORT', enabled: false },
         update: { enabled: false },
       }),

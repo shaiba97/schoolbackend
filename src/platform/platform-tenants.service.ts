@@ -52,28 +52,38 @@ export class PlatformTenantsService {
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [byStatus, total, newSchools, activeLicenses, annualLicenses, revenue, dueInvoices, expiring] =
-      await Promise.all([
-        this.prisma.tenant.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-        }),
-        this.prisma.tenant.count(),
-        this.prisma.tenant.count({ where: { createdAt: { gte: last30Days } } }),
-        this.prisma.tenantLicense.count({ where: { status: 'ACTIVE' } }),
-        this.prisma.tenantLicense.findMany({
-          where: { status: 'ACTIVE', plan: { billingModel: 'ANNUAL' } },
-          include: { plan: { select: { code: true, billingModel: true, price: true } } },
-        }),
-        this.prisma.platformInvoice.aggregate({
-          where: { status: 'PAID' },
-          _sum: { amount: true },
-        }),
-        this.prisma.platformInvoice.count({ where: { status: 'DUE' } }),
-        this.prisma.tenantLicense.count({
-          where: { status: 'ACTIVE', expiresAt: { gte: now, lt: in30Days } },
-        }),
-      ]);
+    const [
+      byStatus,
+      total,
+      newSchools,
+      activeLicenses,
+      annualLicenses,
+      revenue,
+      dueInvoices,
+      expiring,
+    ] = await Promise.all([
+      this.prisma.tenant.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.tenant.count(),
+      this.prisma.tenant.count({ where: { createdAt: { gte: last30Days } } }),
+      this.prisma.tenantLicense.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.tenantLicense.findMany({
+        where: { status: 'ACTIVE', plan: { billingModel: 'ANNUAL' } },
+        include: {
+          plan: { select: { code: true, billingModel: true, price: true } },
+        },
+      }),
+      this.prisma.platformInvoice.aggregate({
+        where: { status: 'PAID' },
+        _sum: { amount: true },
+      }),
+      this.prisma.platformInvoice.count({ where: { status: 'DUE' } }),
+      this.prisma.tenantLicense.count({
+        where: { status: 'ACTIVE', expiresAt: { gte: now, lt: in30Days } },
+      }),
+    ]);
 
     const counts = {
       ACTIVE: 0,
@@ -289,11 +299,7 @@ export class PlatformTenantsService {
     };
   }
 
-  async updateStatus(
-    tenantId: string,
-    status: string,
-    actor: PlatformActor,
-  ) {
+  async updateStatus(tenantId: string, status: string, actor: PlatformActor) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { id: true, status: true },

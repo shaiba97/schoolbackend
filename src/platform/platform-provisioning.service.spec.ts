@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 
 jest.mock('bcrypt', () => ({
@@ -44,7 +48,9 @@ function build(overrides: Record<string, unknown> = {}) {
         },
         role: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'role-new', slug: 'ADMIN' }),
+          create: jest
+            .fn()
+            .mockResolvedValue({ id: 'role-new', slug: 'ADMIN' }),
         },
         membershipRole: {
           create: jest.fn().mockResolvedValue({ id: 'membership-role-new' }),
@@ -121,14 +127,15 @@ describe('PlatformProvisioningService.provision', () => {
 
   it('refuses a duplicate slug', async () => {
     const { service, prisma } = build();
-    (prisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: any) => unknown) =>
-      fn({
-        tenant: {
-          findUnique: jest.fn().mockResolvedValue({ id: 'tenant-existing' }),
-          create: jest.fn(),
-        },
-        platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
-      }),
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      async (fn: (tx: any) => unknown) =>
+        fn({
+          tenant: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'tenant-existing' }),
+            create: jest.fn(),
+          },
+          platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
+        }),
     );
 
     await expect(service.provision(validInput, actor)).rejects.toBeInstanceOf(
@@ -138,12 +145,19 @@ describe('PlatformProvisioningService.provision', () => {
 
   it('refuses a duplicate admin email', async () => {
     const { service, prisma } = build();
-    (prisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: any) => unknown) =>
-      fn({
-        tenant: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
-        user: { findUnique: jest.fn().mockResolvedValue({ id: 'user-existing' }), create: jest.fn() },
-        platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
-      }),
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      async (fn: (tx: any) => unknown) =>
+        fn({
+          tenant: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            create: jest.fn(),
+          },
+          user: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'user-existing' }),
+            create: jest.fn(),
+          },
+          platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
+        }),
     );
 
     await expect(service.provision(validInput, actor)).rejects.toBeInstanceOf(
@@ -169,9 +183,12 @@ describe('PlatformProvisioningService.provision', () => {
   });
 
   it('enables every portal when no module list is supplied', async () => {
-    const { service, prisma } = build();
+    const { service } = build();
 
-    const result = await service.provision({ ...validInput, modules: undefined }, actor);
+    const result = await service.provision(
+      { ...validInput, modules: undefined },
+      actor,
+    );
 
     expect(result.modules).toEqual(
       expect.arrayContaining([

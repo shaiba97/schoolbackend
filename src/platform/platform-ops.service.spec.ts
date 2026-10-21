@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 
 import { PlatformOpsService } from './platform-ops.service';
@@ -65,7 +69,8 @@ describe('PlatformOpsService.listAudit', () => {
       limit: 10,
     });
 
-    const args = (prisma.platformAuditLog.findMany as jest.Mock).mock.calls[0][0];
+    const args = (prisma.platformAuditLog.findMany as jest.Mock).mock
+      .calls[0][0];
     expect(args.where).toMatchObject({
       tenantId: 'tenant-1',
       actorId: 'actor-1',
@@ -96,7 +101,11 @@ describe('PlatformOpsService.listAudit', () => {
     (prisma.platformAdmin.findMany as jest.Mock).mockResolvedValue([
       {
         id: 'actor-1',
-        user: { firstName: 'Root', lastName: 'Admin', email: 'root@platform.dev' },
+        user: {
+          firstName: 'Root',
+          lastName: 'Admin',
+          email: 'root@platform.dev',
+        },
       },
     ]);
 
@@ -124,14 +133,21 @@ describe('PlatformOpsService.listAnnouncements', () => {
         createdAt: new Date(),
         createdBy: {
           id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          user: { firstName: 'Root', lastName: 'Admin', email: 'root@platform.dev' },
+          user: {
+            firstName: 'Root',
+            lastName: 'Admin',
+            email: 'root@platform.dev',
+          },
         },
       },
     ]);
 
     const rows = await service.listAnnouncements();
 
-    expect(rows[0]).toMatchObject({ title: 'Maintenance window', author: 'Root Admin' });
+    expect(rows[0]).toMatchObject({
+      title: 'Maintenance window',
+      author: 'Root Admin',
+    });
   });
 });
 
@@ -180,7 +196,10 @@ describe('PlatformOpsService.createAnnouncement', () => {
     const { service } = build();
 
     await expect(
-      service.createAnnouncement({ title: '  ', body: '', severity: 'INFO' }, superAdmin),
+      service.createAnnouncement(
+        { title: '  ', body: '', severity: 'INFO' },
+        superAdmin,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

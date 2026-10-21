@@ -34,7 +34,8 @@ export class PlatformRoleGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request>();
-    const admin = (request as { platformAdmin?: { role?: string } }).platformAdmin;
+    const admin = (request as { platformAdmin?: { role?: string } })
+      .platformAdmin;
     if (!admin?.role || !requiredRoles.includes(admin.role)) {
       throw new ForbiddenException('This action requires super admin access');
     }

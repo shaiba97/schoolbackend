@@ -1,6 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AnnouncementSeverity } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateAnnouncementDto {
   @ApiProperty({ maxLength: 200 })
@@ -14,7 +20,10 @@ export class CreateAnnouncementDto {
   @MinLength(3)
   body!: string;
 
-  @ApiProperty({ enum: AnnouncementSeverity, default: AnnouncementSeverity.INFO })
+  @ApiProperty({
+    enum: AnnouncementSeverity,
+    default: AnnouncementSeverity.INFO,
+  })
   @IsEnum(AnnouncementSeverity)
   severity!: AnnouncementSeverity;
 

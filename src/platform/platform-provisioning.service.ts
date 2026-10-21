@@ -68,18 +68,24 @@ export class PlatformProvisioningService {
     const [adminFirstName, ...adminRest] = input.adminName.trim().split(' ');
     const adminLastName = adminRest.join(' ') || undefined;
 
-    const modules = (input.modules?.length ? input.modules : ALL_MODULES).filter(
-      (module): module is PortalModule =>
-        ALL_MODULES.includes(module as PortalModule),
+    const modules = (
+      input.modules?.length ? input.modules : ALL_MODULES
+    ).filter((module): module is PortalModule =>
+      ALL_MODULES.includes(module as PortalModule),
     );
-    const featureFlags = { ...DEFAULT_FEATURE_FLAGS, ...(input.featureFlags ?? {}) };
+    const featureFlags = {
+      ...DEFAULT_FEATURE_FLAGS,
+      ...(input.featureFlags ?? {}),
+    };
 
     // Hashing before the transaction keeps the pooled connection free while
     // bcrypt does its ~100ms of work.
     const passwordHash = await bcrypt.hash(input.adminPassword, 10);
 
     const plan = input.planCode
-      ? await this.prisma.platformPlan.findUnique({ where: { code: input.planCode } })
+      ? await this.prisma.platformPlan.findUnique({
+          where: { code: input.planCode },
+        })
       : null;
     if (input.planCode && !plan) {
       throw new NotFoundException('Plan not found');
@@ -91,9 +97,13 @@ export class PlatformProvisioningService {
         throw new ConflictException('A school with this slug already exists');
       }
 
-      const existingUser = await tx.user.findUnique({ where: { email: adminEmail } });
+      const existingUser = await tx.user.findUnique({
+        where: { email: adminEmail },
+      });
       if (existingUser) {
-        throw new ConflictException('The administrator email is already in use');
+        throw new ConflictException(
+          'The administrator email is already in use',
+        );
       }
 
       const tenant = await tx.tenant.create({
@@ -123,7 +133,9 @@ export class PlatformProvisioningService {
       });
 
       const role =
-        (await tx.role.findFirst({ where: { tenantId: tenant.id, slug: 'ADMIN' } })) ??
+        (await tx.role.findFirst({
+          where: { tenantId: tenant.id, slug: 'ADMIN' },
+        })) ??
         (await tx.role.create({
           data: {
             tenantId: tenant.id,

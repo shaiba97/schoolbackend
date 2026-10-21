@@ -4,7 +4,9 @@ import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListTenantsQueryDto {
-  @ApiPropertyOptional({ description: 'Free-text match on name, slug, or email' })
+  @ApiPropertyOptional({
+    description: 'Free-text match on name, slug, or email',
+  })
   @IsOptional()
   @IsString()
   search?: string;
@@ -14,7 +16,9 @@ export class ListTenantsQueryDto {
   @IsEnum(TenantStatus)
   status?: TenantStatus;
 
-  @ApiPropertyOptional({ description: 'Plan code the school holds a license for' })
+  @ApiPropertyOptional({
+    description: 'Plan code the school holds a license for',
+  })
   @IsOptional()
   @IsString()
   plan?: string;

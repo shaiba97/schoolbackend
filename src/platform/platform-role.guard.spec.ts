@@ -3,7 +3,10 @@ import { Reflector } from '@nestjs/core';
 
 import { PlatformRoleGuard, PLATFORM_ROLES_KEY } from './platform-role.guard';
 
-function makeContext(request: Record<string, unknown>, requiredRoles?: string[]) {
+function makeContext(
+  request: Record<string, unknown>,
+  requiredRoles?: string[],
+) {
   const reflector = {
     getAllAndOverride: jest.fn().mockReturnValue(requiredRoles),
   } as unknown as Reflector;
@@ -44,7 +47,9 @@ describe('PlatformRoleGuard', () => {
   });
 
   it('allows the route when no roles are required', () => {
-    const { guard, context } = makeContext({ platformAdmin: { role: 'SUPPORT' } });
+    const { guard, context } = makeContext({
+      platformAdmin: { role: 'SUPPORT' },
+    });
 
     expect(guard.canActivate(context)).toBe(true);
   });

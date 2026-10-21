@@ -34,7 +34,10 @@ export class PlatformAnnouncementsController {
   @UseGuards(PlatformRoleGuard)
   @PlatformRoles('SUPER_ADMIN')
   create(@Body() dto: CreateAnnouncementDto, @Req() request: Request) {
-    return this.platformOpsService.createAnnouncement(dto, platformActor(request));
+    return this.platformOpsService.createAnnouncement(
+      dto,
+      platformActor(request),
+    );
   }
 
   @Patch(':id')
@@ -45,6 +48,10 @@ export class PlatformAnnouncementsController {
     @Body() dto: UpdateAnnouncementDto,
     @Req() request: Request,
   ) {
-    return this.platformOpsService.updateAnnouncement(id, dto, platformActor(request));
+    return this.platformOpsService.updateAnnouncement(
+      id,
+      dto,
+      platformActor(request),
+    );
   }
 }

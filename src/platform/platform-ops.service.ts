@@ -64,8 +64,12 @@ export class PlatformOpsService {
       this.prisma.platformAuditLog.count({ where }),
     ]);
 
-    const tenantIds = [...new Set(rows.map((row) => row.tenantId).filter(Boolean))] as string[];
-    const actorIds = [...new Set(rows.map((row) => row.actorId).filter(Boolean))] as string[];
+    const tenantIds = [
+      ...new Set(rows.map((row) => row.tenantId).filter(Boolean)),
+    ] as string[];
+    const actorIds = [
+      ...new Set(rows.map((row) => row.actorId).filter(Boolean)),
+    ] as string[];
 
     const [tenants, actors] = await Promise.all([
       tenantIds.length
@@ -79,7 +83,9 @@ export class PlatformOpsService {
             where: { id: { in: actorIds } },
             select: {
               id: true,
-              user: { select: { firstName: true, lastName: true, email: true } },
+              user: {
+                select: { firstName: true, lastName: true, email: true },
+              },
             },
           })
         : Promise.resolve([]),
@@ -91,8 +97,9 @@ export class PlatformOpsService {
     const actorNames = new Map<string, string>(
       actors.map((actor) => {
         const name =
-          [actor.user.firstName, actor.user.lastName].filter(Boolean).join(' ') ||
-          actor.user.email;
+          [actor.user.firstName, actor.user.lastName]
+            .filter(Boolean)
+            .join(' ') || actor.user.email;
         return [actor.id, name] as [string, string];
       }),
     );
@@ -104,7 +111,9 @@ export class PlatformOpsService {
         entityType: row.entityType,
         entityId: row.entityId,
         tenantId: row.tenantId,
-        tenantName: row.tenantId ? (tenantNames.get(row.tenantId) ?? null) : null,
+        tenantName: row.tenantId
+          ? (tenantNames.get(row.tenantId) ?? null)
+          : null,
         actorId: row.actorId,
         actorName: row.actorId ? (actorNames.get(row.actorId) ?? null) : null,
         ipAddress: row.ipAddress,
@@ -141,10 +150,7 @@ export class PlatformOpsService {
       publishedAt: row.publishedAt,
       createdAt: row.createdAt,
       author: row.createdBy
-        ? [
-            row.createdBy.user.firstName,
-            row.createdBy.user.lastName,
-          ]
+        ? [row.createdBy.user.firstName, row.createdBy.user.lastName]
             .filter(Boolean)
             .join(' ') || row.createdBy.user.email
         : null,
