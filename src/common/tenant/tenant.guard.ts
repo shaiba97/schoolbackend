@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantLockedException } from './tenant-locked.exception';
 
 export interface TenantContext {
   tenantId: string;
@@ -70,7 +71,7 @@ export class TenantGuard implements CanActivate {
       },
       include: {
         tenant: {
-          select: { status: true },
+          select: { status: true, name: true, lockedAt: true, lockReason: true },
         },
         roles: {
           include: { role: true },
@@ -85,6 +86,16 @@ export class TenantGuard implements CanActivate {
     }
 
     if (BLOCKED_TENANT_STATUSES.includes(membership.tenant.status as never)) {
+      // A school locked over an ended licence gets the full explanation, so
+      // its portal can show why access stopped. Other blocked states keep
+      // the generic message.
+      if (membership.tenant.lockedAt) {
+        throw new TenantLockedException({
+          schoolName: membership.tenant.name,
+          lockedAt: membership.tenant.lockedAt,
+          reason: membership.tenant.lockReason,
+        });
+      }
       throw new ForbiddenException(BLOCKED_TENANT_MESSAGE);
     }
 

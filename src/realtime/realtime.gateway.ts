@@ -78,6 +78,25 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         return;
       }
 
+      // A school locked by the provider is refused here too. The socket
+      // would otherwise keep delivering live events to a school that can no
+      // longer read anything through the API.
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { name: true, lockedAt: true, lockReason: true },
+      });
+      if (tenant?.lockedAt) {
+        this.logger.warn(`Socket ${client.id} rejected: tenant is locked`);
+        client.emit('tenant:locked', {
+          code: 'TENANT_LOCKED',
+          schoolName: tenant.name,
+          lockedAt: tenant.lockedAt.toISOString(),
+          reason: tenant.lockReason,
+        });
+        client.disconnect(true);
+        return;
+      }
+
       // Join identity rooms
       const rooms = await this.resolveRooms(userId, tenantId);
       await client.join(rooms);

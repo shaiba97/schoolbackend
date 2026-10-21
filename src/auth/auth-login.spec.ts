@@ -397,6 +397,41 @@ describe('AuthService.login identifier rules', () => {
 });
 
 describe('AuthService.login blocked tenants', () => {
+  it('explains a school whose licence expired instead of a generic refusal', async () => {
+    const lockedAt = new Date('2026-04-01T00:00:00.000Z');
+    const { service, jwt } = build([
+      activeUser({
+        memberships: [
+          {
+            tenantId,
+            tenant: {
+              id: tenantId,
+              status: 'SUSPENDED',
+              name: 'Springfield Academy',
+              lockedAt,
+              lockReason: 'LICENSE_EXPIRED',
+            },
+            roles: [{ role: { slug: 'ADMIN' } }],
+          },
+        ],
+      }),
+    ]);
+
+    const error = await service
+      .login({ phone, tenantId, password: 'secret' })
+      .catch((caught: unknown) => caught);
+
+    const body = (error as { getResponse: () => Record<string, unknown> }).getResponse();
+    expect(body).toMatchObject({
+      statusCode: 403,
+      code: 'TENANT_LOCKED',
+      schoolName: 'Springfield Academy',
+      reason: 'LICENSE_EXPIRED',
+    });
+    expect(String(body.message)).toContain('Access Suspended');
+    expect(jwt.signAsync).not.toHaveBeenCalled();
+  });
+
   it.each(['SUSPENDED', 'ARCHIVED', 'PENDING'])(
     'rejects login when the only membership tenant is %s',
     async (status) => {

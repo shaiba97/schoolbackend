@@ -15,6 +15,7 @@ import {
   TenantMembershipPayload,
 } from './dto/auth-response.dto';
 import { phoneLookupKey } from '../common/phone/phone.util';
+import { TenantLockedException } from '../common/tenant/tenant-locked.exception';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -321,6 +322,16 @@ export class AuthService {
       (m) => m.tenant.status === 'ACTIVE' || m.tenant.status === 'TRIAL',
     );
     if (user.memberships.length > 0 && loginable.length === 0) {
+      // A school whose licence ended is told exactly that, so its portal can
+      // show the suspension notice instead of a generic refusal.
+      const locked = user.memberships.find((m) => m.tenant.lockedAt);
+      if (locked) {
+        throw new TenantLockedException({
+          schoolName: locked.tenant.name,
+          lockedAt: locked.tenant.lockedAt,
+          reason: locked.tenant.lockReason,
+        });
+      }
       throw new ForbiddenException(
         'This school is not accepting sign-ins right now. Contact support.',
       );
@@ -492,6 +503,8 @@ export class AuthService {
           slug: m.tenant.slug,
           currencyCode: m.tenant.currencyCode,
           timezone: m.tenant.timezone,
+          lockedAt: m.tenant.lockedAt,
+          lockReason: m.tenant.lockReason,
         },
         roles: m.roles.map((mr) => ({
           id: mr.role.id,
@@ -499,6 +512,16 @@ export class AuthService {
           slug: mr.role.slug,
         })),
       })),
+      // Schools the provider has locked. The portal shows the suspension
+      // notice from this list before the user touches any data.
+      lockedTenants: user.memberships
+        .filter((m) => m.tenant.lockedAt)
+        .map((m) => ({
+          tenantId: m.tenantId,
+          name: m.tenant.name,
+          lockedAt: m.tenant.lockedAt,
+          reason: m.tenant.lockReason,
+        })),
     };
   }
 

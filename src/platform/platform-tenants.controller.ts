@@ -43,11 +43,6 @@ export class PlatformTenantsController {
     return this.platformTenantsService.stats();
   }
 
-  @Get('plans')
-  plans() {
-    return this.platformTenantsService.listPlans();
-  }
-
   @Get('tenants')
   list(@Query() query: ListTenantsQueryDto) {
     return this.platformTenantsService.list(query);

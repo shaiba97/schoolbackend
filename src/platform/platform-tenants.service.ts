@@ -126,22 +126,6 @@ export class PlatformTenantsService {
     };
   }
 
-  async listPlans() {
-    const plans = await this.prisma.platformPlan.findMany({
-      orderBy: { price: 'asc' },
-    });
-
-    return plans.map((plan) => ({
-      id: plan.id,
-      code: plan.code,
-      name: plan.name,
-      billingModel: plan.billingModel,
-      price: Number(plan.price),
-      currency: plan.currency,
-      isActive: plan.isActive,
-    }));
-  }
-
   async list(query: PlatformListQuery) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(

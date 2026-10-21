@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantLockedException } from '../common/tenant/tenant-locked.exception';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
@@ -143,6 +144,20 @@ export class TenantsService {
       throw new ForbiddenException('Only admins can update a tenant');
     }
 
+    // A locked school is read-only: its settings cannot change until the
+    // provider lifts the lock.
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, status: true, lockedAt: true, lockReason: true },
+    });
+    if (tenant?.lockedAt) {
+      throw new TenantLockedException({
+        schoolName: tenant.name,
+        lockedAt: tenant.lockedAt,
+        reason: tenant.lockReason,
+      });
+    }
+
     if (dto.slug) {
       const existing = await this.prisma.tenant.findFirst({
         where: {
@@ -195,6 +210,20 @@ export class TenantsService {
 
     if (membership.roles.length === 0) {
       throw new ForbiddenException('Only admins can delete a tenant');
+    }
+
+    // A locked school cannot delete itself. The platform console archives
+    // schools; a hard delete here would be an escape hatch out of a lock.
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, status: true, lockedAt: true, lockReason: true },
+    });
+    if (tenant?.lockedAt) {
+      throw new TenantLockedException({
+        schoolName: tenant.name,
+        lockedAt: tenant.lockedAt,
+        reason: tenant.lockReason,
+      });
     }
 
     await this.prisma.tenant.delete({

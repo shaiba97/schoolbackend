@@ -81,6 +81,11 @@ describe('RealtimeGateway.handleConnection', () => {
     const jwt = { verifyAsync };
     const prisma = {
       tenantMembership: { findFirst: jest.fn() },
+      tenant: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Test School', lockedAt: null, lockReason: null }),
+      },
       student: { findFirst: jest.fn() },
       studentEnrollment: { findFirst: jest.fn() },
     };
@@ -96,6 +101,7 @@ describe('RealtimeGateway.handleConnection', () => {
         : { auth: {}, headers: {} },
       join: jest.fn(),
       disconnect: jest.fn(),
+      emit: jest.fn(),
     };
   }
 
@@ -152,6 +158,30 @@ describe('RealtimeGateway.handleConnection', () => {
 
     expect(socket.disconnect).toHaveBeenCalledWith(true);
     expect(socket.join).not.toHaveBeenCalled();
+  });
+
+  it('refuses a socket for a school the provider has locked', async () => {
+    const { service, jwt, prisma } = mocks();
+    jwt.mockImplementation((token: string, opts?: { audience?: string }) => {
+      if (opts?.audience === 'socket') return Promise.resolve({ sub: USER, tenantId: TENANT });
+      return Promise.reject(new Error('not a session token'));
+    });
+    ticketed(prisma);
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      name: 'Springfield Academy',
+      lockedAt: new Date('2026-04-01'),
+      lockReason: 'LICENSE_EXPIRED',
+    });
+    const socket = client('ticket-abc');
+
+    await service.handleConnection(socket as never);
+
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+    expect(socket.join).not.toHaveBeenCalled();
+    expect(socket.emit).toHaveBeenCalledWith(
+      'tenant:locked',
+      expect.objectContaining({ code: 'TENANT_LOCKED', schoolName: 'Springfield Academy' }),
+    );
   });
 
   it('joins identity rooms for a ticketed student with active membership', async () => {
@@ -224,6 +254,11 @@ describe('RealtimeGateway.resolveRooms — finance staffing', () => {
     const jwt = { verifyAsync };
     const prisma = {
       tenantMembership: { findFirst: jest.fn() },
+      tenant: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Test School', lockedAt: null, lockReason: null }),
+      },
       student: { findFirst: jest.fn().mockResolvedValue(null) },
       guardian: { findFirst: jest.fn().mockResolvedValue(null) },
       studentEnrollment: { findFirst: jest.fn() },
@@ -245,6 +280,7 @@ describe('RealtimeGateway.resolveRooms — finance staffing', () => {
       handshake: { auth: { token: authToken }, headers: {} },
       join: jest.fn(),
       disconnect: jest.fn(),
+      emit: jest.fn(),
     };
   }
 

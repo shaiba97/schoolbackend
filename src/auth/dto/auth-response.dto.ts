@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UserPayload {
   @ApiProperty() id: string;
@@ -30,10 +30,20 @@ export class TenantPayload {
   @ApiProperty() slug: string;
   @ApiProperty() currencyCode: string;
   @ApiProperty() timezone: string;
+  @ApiPropertyOptional({ nullable: true }) lockedAt?: Date | null;
+  @ApiPropertyOptional({ nullable: true }) lockReason?: string | null;
+}
+
+export class LockedTenantPayload {
+  @ApiProperty() tenantId: string;
+  @ApiProperty() name: string;
+  @ApiProperty({ nullable: true }) lockedAt: Date | null;
+  @ApiProperty({ nullable: true }) reason: string | null;
 }
 
 export class TenantMembershipPayload {
   @ApiProperty() id: string;
+  @ApiProperty() tenantId: string;
   @ApiProperty() status: string;
   @ApiProperty() joinedAt: Date;
   @ApiProperty() tenant: TenantPayload;
@@ -44,4 +54,9 @@ export class AuthResponseDto {
   @ApiProperty() accessToken: string;
   @ApiProperty() user: UserPayload;
   @ApiProperty({ type: [TenantMembershipPayload] }) memberships: TenantMembershipPayload[];
+  /**
+   * Schools of this user that the provider has locked. A portal uses it to
+   * show the suspension notice before the user touches anything.
+   */
+  @ApiPropertyOptional({ type: [LockedTenantPayload] }) lockedTenants?: LockedTenantPayload[];
 }

@@ -10,6 +10,9 @@ interface ScenarioOverrides {
   tenantStatus?: string;
   membershipStatus?: string;
   user?: unknown;
+  lockedAt?: Date | null;
+  lockReason?: string | null;
+  tenantName?: string;
 }
 
 function buildScenario(overrides: ScenarioOverrides = {}) {
@@ -17,7 +20,13 @@ function buildScenario(overrides: ScenarioOverrides = {}) {
     id: 'membership-1',
     tenantId,
     status: overrides.membershipStatus ?? 'ACTIVE',
-    tenant: { id: tenantId, status: overrides.tenantStatus ?? 'ACTIVE' },
+    tenant: {
+      id: tenantId,
+      status: overrides.tenantStatus ?? 'ACTIVE',
+      name: overrides.tenantName ?? 'Springfield Academy',
+      lockedAt: overrides.lockedAt ?? null,
+      lockReason: overrides.lockReason ?? null,
+    },
     roles: [{ role: { slug: 'ADMIN' } }],
   };
   const prisma = {
@@ -68,8 +77,41 @@ describe('TenantGuard tenant status', () => {
     },
   );
 
-  it('lets a platform-scoped token through without a membership', async () => {
-    const { guard, prisma } = buildScenario({ tenantStatus: 'SUSPENDED' });
+  it('explains a school whose licence expired instead of a generic refusal', async () => {
+    const lockedAt = new Date('2026-04-01T00:00:00.000Z');
+    const { guard } = buildScenario({
+      tenantStatus: 'SUSPENDED',
+      lockedAt,
+      lockReason: 'LICENSE_EXPIRED',
+    });
+    const request = makeRequest({ userId }, { 'x-tenant-id': tenantId });
+
+    const error = await guard
+      .canActivate(makeContext(request))
+      .catch((caught: unknown) => caught);
+
+    const body = (error as { getResponse: () => Record<string, unknown> }).getResponse();
+    expect(body).toMatchObject({
+      statusCode: 403,
+      code: 'TENANT_LOCKED',
+      schoolName: 'Springfield Academy',
+      reason: 'LICENSE_EXPIRED',
+    });
+    expect(String(body.message)).toContain('Access Suspended');
+    expect(String(body.message)).toContain('Springfield Academy');
+    expect(String(body.message)).toContain('2026-04-01');
+  });
+
+  it('keeps the generic message for a blocked school that carries no lock', async () => {
+    const { guard } = buildScenario({ tenantStatus: 'ARCHIVED' });
+    const request = makeRequest({ userId }, { 'x-tenant-id': tenantId });
+
+    await expect(guard.canActivate(makeContext(request))).rejects.toThrow(
+      'This school is currently locked',
+    );
+  });
+
+  it('lets a platform-scoped token through without a membership', async () => {    const { guard, prisma } = buildScenario({ tenantStatus: 'SUSPENDED' });
     const request = makeRequest(
       { userId: 'platform-user', scope: 'platform', roles: [] },
       { 'x-tenant-id': tenantId },

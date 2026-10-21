@@ -10,6 +10,9 @@ import { PlatformOpsService } from './platform-ops.service';
 import { PlatformProvisioningService } from './platform-provisioning.service';
 import { PlatformFinancialsService } from './platform-financials.service';
 import { PlatformFinancialsController } from './platform-financials.controller';
+import { PlatformPlansService } from './platform-plans.service';
+import { PlatformPlansController } from './platform-plans.controller';
+import { PlatformExpirationService } from './platform-expiration.service';
 import {
   ManualPaymentGatewayAdapter,
   PaymentGatewayRegistry,
@@ -29,6 +32,7 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
     PlatformAuditController,
     PlatformAnnouncementsController,
     PlatformFinancialsController,
+    PlatformPlansController,
   ],
   providers: [
     PlatformAuthService,
@@ -36,6 +40,8 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
     PlatformOpsService,
     PlatformProvisioningService,
     PlatformFinancialsService,
+    PlatformPlansService,
+    PlatformExpirationService,
     ManualPaymentGatewayAdapter,
     PaymentGatewayRegistry,
     PlatformAdminGuard,
