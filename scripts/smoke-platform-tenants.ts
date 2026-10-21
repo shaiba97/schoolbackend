@@ -21,6 +21,7 @@ import { PlatformRoleGuard } from '../src/platform/platform-role.guard';
 import { PlatformTenantsController } from '../src/platform/platform-tenants.controller';
 import { PlatformAuthService } from '../src/platform/platform-auth.service';
 import { PlatformTenantsService } from '../src/platform/platform-tenants.service';
+import { PlatformProvisioningService } from '../src/platform/platform-provisioning.service';
 
 const EMAIL = (process.env.PLATFORM_ADMIN_EMAIL || 'root@platform.dev').toLowerCase();
 const PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD || 'Platform@12345';
@@ -43,6 +44,7 @@ async function main() {
     providers: [
       PlatformAuthService,
       PlatformTenantsService,
+      PlatformProvisioningService,
       PlatformAdminGuard,
       PlatformRoleGuard,
       { provide: APP_GUARD, useClass: JwtAuthGuard },

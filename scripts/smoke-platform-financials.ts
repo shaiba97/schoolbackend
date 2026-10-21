@@ -144,13 +144,12 @@ async function main() {
     .set('Authorization', auth)
     .send({
       name: `Financial Smoke School ${stamp}`,
-      slug,
       countryCode: 'SD',
-      currencyCode: 'SDG',
       adminName: 'Fin Smoke Admin',
       adminEmail,
       adminPassword: 'Smoke@12345',
       planCode: 'PRIMARY',
+      studentCount: 100,
     });
   check(
     'a priced school can be provisioned for the payment check',

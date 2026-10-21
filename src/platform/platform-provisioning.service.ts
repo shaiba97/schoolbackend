@@ -9,21 +9,20 @@ import { PortalModule } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PlatformActor } from './platform-tenants.service';
+import { marketDefaults } from './platform-markets';
 
 export type ProvisionTenantInput = {
   name: string;
-  slug?: string;
+  nameAr?: string;
+  countryCode: string;
   email?: string;
   phone?: string;
-  countryCode?: string;
-  currencyCode?: string;
-  timezone?: string;
   adminName: string;
   adminEmail: string;
+  adminPhone?: string;
   adminPassword: string;
   planCode?: string;
-  modules?: string[];
-  featureFlags?: Record<string, boolean>;
+  studentCount?: number;
 };
 
 /** Feature flags a freshly provisioned school starts from, all off. */
@@ -46,10 +45,17 @@ const ALL_MODULES: PortalModule[] = [
 ];
 
 /**
- * Provisions a new school in one transaction: tenant, administrator account,
- * membership with the ADMIN role, portal switches, feature flags, and the
- * first license. Anything less would leave a school that nobody can sign in
- * to, which is the failure mode this endpoint exists to prevent.
+ * Provisions a new school in one transaction: tenant, administrator account
+ * with a staff ID, membership with the ADMIN role, every portal switched on,
+ * the feature flags, and the first license.
+ *
+ * Three decisions live here rather than in the console, so a school ends up
+ * the same whoever provisions it:
+ *
+ * - The market decides the currency and the timezone.
+ * - The slug is derived from the school name, so nobody has to invent one.
+ * - The price is per student per month. The licensed student count is what
+ *   turns the tier price into a monthly amount.
  */
 @Injectable()
 export class PlatformProvisioningService {
@@ -63,20 +69,12 @@ export class PlatformProvisioningService {
     this.assertStrongPassword(input.adminPassword);
 
     const name = input.name.trim();
-    const slug = (input.slug?.trim() || this.slugify(name)).toLowerCase();
+    const nameAr = input.nameAr?.trim() || null;
     const adminEmail = input.adminEmail.trim().toLowerCase();
     const [adminFirstName, ...adminRest] = input.adminName.trim().split(' ');
     const adminLastName = adminRest.join(' ') || undefined;
-
-    const modules = (
-      input.modules?.length ? input.modules : ALL_MODULES
-    ).filter((module): module is PortalModule =>
-      ALL_MODULES.includes(module as PortalModule),
-    );
-    const featureFlags = {
-      ...DEFAULT_FEATURE_FLAGS,
-      ...(input.featureFlags ?? {}),
-    };
+    const studentCount = input.studentCount ?? 0;
+    const { currency, timezone } = marketDefaults(input.countryCode);
 
     // Hashing before the transaction keeps the pooled connection free while
     // bcrypt does its ~100ms of work.
@@ -92,11 +90,6 @@ export class PlatformProvisioningService {
     }
 
     const created = await this.prisma.$transaction(async (tx) => {
-      const existingTenant = await tx.tenant.findUnique({ where: { slug } });
-      if (existingTenant) {
-        throw new ConflictException('A school with this slug already exists');
-      }
-
       const existingUser = await tx.user.findUnique({
         where: { email: adminEmail },
       });
@@ -106,15 +99,18 @@ export class PlatformProvisioningService {
         );
       }
 
+      const slug = await this.uniqueSlug(tx, name);
+
       const tenant = await tx.tenant.create({
         data: {
           name,
+          nameAr,
           slug,
           email: input.email?.trim(),
           phone: input.phone?.trim(),
-          countryCode: input.countryCode?.trim().toUpperCase(),
-          currencyCode: input.currencyCode?.trim().toUpperCase() || 'SDG',
-          timezone: input.timezone?.trim() || 'UTC',
+          countryCode: input.countryCode.trim().toUpperCase(),
+          currencyCode: currency,
+          timezone,
           status: 'ACTIVE',
         },
       });
@@ -124,6 +120,8 @@ export class PlatformProvisioningService {
           email: adminEmail,
           firstName: adminFirstName || 'Administrator',
           lastName: adminLastName,
+          phone: input.adminPhone?.trim(),
+          staffNumber: await this.nextStaffNumber(tx),
           passwordHash,
         },
       });
@@ -150,8 +148,10 @@ export class PlatformProvisioningService {
         data: { membershipId: membership.id, roleId: role.id },
       });
 
+      // Every portal and every flag: the tier decides what a school pays
+      // for, not which parts of the product it is allowed to switch on.
       await tx.tenantModule.createMany({
-        data: modules.map((module) => ({
+        data: ALL_MODULES.map((module) => ({
           tenantId: tenant.id,
           module,
           enabled: true,
@@ -159,7 +159,7 @@ export class PlatformProvisioningService {
       });
 
       await tx.tenantFeatureFlag.createMany({
-        data: Object.entries(featureFlags).map(([key, enabled]) => ({
+        data: Object.entries(DEFAULT_FEATURE_FLAGS).map(([key, enabled]) => ({
           tenantId: tenant.id,
           key,
           enabled,
@@ -173,12 +173,20 @@ export class PlatformProvisioningService {
               planId: plan.id,
               status: 'ACTIVE',
               startedAt: new Date(),
+              expiresAt: new Date(
+                Date.now() + (plan.durationDays || 365) * 24 * 60 * 60 * 1000,
+              ),
+              seats: studentCount > 0 ? studentCount : null,
             },
           })
         : null;
 
-      return { tenant, user, license, plan, modules };
+      return { tenant, user, license, plan, slug };
     });
+
+    const monthlyUsd = plan
+      ? Number(plan.price) * (studentCount > 0 ? studentCount : 1)
+      : 0;
 
     await this.prisma.platformAuditLog.create({
       data: {
@@ -189,10 +197,14 @@ export class PlatformProvisioningService {
         tenantId: created.tenant.id,
         newValues: {
           name: created.tenant.name,
-          slug: created.tenant.slug,
+          slug: created.slug,
+          countryCode: input.countryCode.trim().toUpperCase(),
+          currencyCode: currency,
           adminEmail,
+          staffNumber: created.user.staffNumber,
           planCode: created.plan?.code ?? null,
-          modules: created.modules,
+          studentCount,
+          monthlyUsd,
         },
         ipAddress: actor.ip,
         userAgent: actor.userAgent?.slice(0, 255),
@@ -203,7 +215,11 @@ export class PlatformProvisioningService {
       tenant: {
         id: created.tenant.id,
         name: created.tenant.name,
+        nameAr: created.tenant.nameAr,
         slug: created.tenant.slug,
+        countryCode: created.tenant.countryCode,
+        currencyCode: created.tenant.currencyCode,
+        timezone: created.tenant.timezone,
         status: created.tenant.status,
       },
       admin: {
@@ -211,13 +227,65 @@ export class PlatformProvisioningService {
         email: created.user.email,
         firstName: created.user.firstName,
         lastName: created.user.lastName ?? null,
+        phone: created.user.phone ?? null,
+        staffNumber: created.user.staffNumber ?? null,
       },
       license: created.license
-        ? { id: created.license.id, planCode: created.plan?.code ?? null }
+        ? {
+            id: created.license.id,
+            planCode: created.plan?.code ?? null,
+            studentCount: created.license.seats ?? 0,
+            monthlyUsd,
+          }
         : null,
-      modules: created.modules,
-      featureFlags,
+      modules: ALL_MODULES,
+      featureFlags: DEFAULT_FEATURE_FLAGS,
     };
+  }
+
+  /**
+   * Derives a slug from the school name and keeps it unique. Two schools
+   * with the same name are normal; the second one gets a numbered suffix
+   * rather than a conflict.
+   */
+  private async uniqueSlug(tx: any, name: string): Promise<string> {
+    const base = this.slugify(name) || 'school';
+    const taken = new Set(
+      (
+        await tx.tenant.findMany({
+          where: { slug: { startsWith: base } },
+          select: { slug: true },
+        })
+      ).map((row: { slug: string }) => row.slug),
+    );
+    if (!taken.has(base)) return base;
+
+    let suffix = 2;
+    while (taken.has(`${base}-${suffix}`)) suffix += 1;
+    return `${base}-${suffix}`;
+  }
+
+  /**
+   * Staff IDs for school administrators: STF plus a sequence, walked forward
+   * while the number is taken so a deletion never hands out a live ID.
+   */
+  private async nextStaffNumber(tx: any): Promise<string> {
+    const prefix = 'STF';
+    const existing = await tx.user.findMany({
+      where: { staffNumber: { startsWith: prefix } },
+      select: { staffNumber: true },
+    });
+    const taken = new Set(
+      existing
+        .map((row: { staffNumber: string | null }) => row.staffNumber)
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    let sequence = taken.size + 1;
+    while (taken.has(`${prefix}${String(sequence).padStart(3, '0')}`)) {
+      sequence += 1;
+    }
+    return `${prefix}${String(sequence).padStart(3, '0')}`;
   }
 
   private assertStrongPassword(password: string) {

@@ -15,6 +15,7 @@ import {
   Length,
   Matches,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -31,7 +32,7 @@ export class CreateTierDto {
   @ApiProperty()
   @IsString()
   @MinLength(2)
-  @Length(160)
+  @MaxLength(160)
   name!: string;
 
   @ApiProperty({ enum: ['PRIMARY', 'INTERMEDIATE', 'ADVANCED', 'CUSTOM'] })
@@ -41,7 +42,7 @@ export class CreateTierDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(200)
+  @MaxLength(200)
   target?: string;
 
   @ApiProperty({ enum: ['ANNUAL', 'LIFETIME'] })
@@ -90,13 +91,13 @@ export class UpdateTierDto {
   @IsOptional()
   @IsString()
   @MinLength(2)
-  @Length(160)
+  @MaxLength(160)
   name?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(200)
+  @MaxLength(200)
   target?: string | null;
 
   @ApiPropertyOptional()

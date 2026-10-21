@@ -25,6 +25,9 @@ import { PlatformTenantsController } from '../src/platform/platform-tenants.cont
 import { PlatformAuthService } from '../src/platform/platform-auth.service';
 import { PlatformProvisioningService } from '../src/platform/platform-provisioning.service';
 import { PlatformTenantsService } from '../src/platform/platform-tenants.service';
+import { PlatformPlansService } from '../src/platform/platform-plans.service';
+import { PlatformPlansController } from '../src/platform/platform-plans.controller';
+import { PlatformExpirationService } from '../src/platform/platform-expiration.service';
 
 const EMAIL = (process.env.PLATFORM_ADMIN_EMAIL || 'root@platform.dev').toLowerCase();
 const PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD || 'Platform@12345';
@@ -48,12 +51,19 @@ function check(name: string, ok: boolean, detail?: string) {
 async function main() {
   const moduleRef = await Test.createTestingModule({
     imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule],
-    controllers: [AuthController, PlatformAuthController, PlatformTenantsController],
+    controllers: [
+      AuthController,
+      PlatformAuthController,
+      PlatformTenantsController,
+      PlatformPlansController,
+    ],
     providers: [
       AuthService,
       PlatformAuthService,
       PlatformTenantsService,
       PlatformProvisioningService,
+      PlatformPlansService,
+      PlatformExpirationService,
       PlatformAdminGuard,
       PlatformRoleGuard,
       { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -92,17 +102,16 @@ async function main() {
     .set('Authorization', auth)
     .send({
       name: `Smoke School ${STAMP}`,
-      slug: SLUG,
+      nameAr: `مدرسة الدخان ${STAMP}`,
       email: `office-${STAMP}@smoke.school`,
-      countryCode: 'SD',
-      currencyCode: 'SDG',
-      timezone: 'Africa/Khartoum',
+      phone: '+966500000001',
+      countryCode: 'SA',
       adminName: 'Smoke Admin',
       adminEmail: ADMIN_EMAIL,
+      adminPhone: '+966500000000',
       adminPassword: ADMIN_PASSWORD,
       planCode,
-      modules: ['ADMIN', 'ACADEMIC'],
-      featureFlags: { 'notifications.whatsapp': true },
+      studentCount: 120,
     });
   check(
     'school is provisioned',
@@ -111,24 +120,70 @@ async function main() {
   );
   const tenantId = created.body?.tenant?.id as string;
 
-  const duplicate = await request(server)
+  check(
+    'the market decides the currency and timezone',
+    created.body?.tenant?.currencyCode === 'SAR' &&
+      created.body?.tenant?.timezone === 'Asia/Riyadh',
+    JSON.stringify(created.body?.tenant),
+  );
+
+  check(
+    'the administrator is issued a staff ID',
+    typeof created.body?.admin?.staffNumber === 'string' &&
+      created.body.admin.staffNumber.length > 0,
+    JSON.stringify(created.body?.admin),
+  );
+
+  check(
+    'the subscription is priced per student per month',
+    created.body?.license?.monthlyUsd === 120 * (plans.body?.[0]?.price ?? 0),
+    `monthly=${created.body?.license?.monthlyUsd} price=${plans.body?.[0]?.price}`,
+  );
+
+  const duplicateEmail = await request(server)
     .post('/api/platform/tenants')
     .set('Authorization', auth)
     .send({
       name: `Smoke School ${STAMP}`,
-      slug: SLUG,
+      countryCode: 'SA',
+      adminName: 'Smoke Admin',
+      adminEmail: ADMIN_EMAIL,
+      adminPassword: ADMIN_PASSWORD,
+    });
+  check(
+    'a duplicate administrator email is refused',
+    duplicateEmail.status === 409,
+    `status=${duplicateEmail.status}`,
+  );
+
+  const sameName = await request(server)
+    .post('/api/platform/tenants')
+    .set('Authorization', auth)
+    .send({
+      name: `Smoke School ${STAMP}`,
+      countryCode: 'SA',
       adminName: 'Smoke Admin',
       adminEmail: `other-${STAMP}@smoke.school`,
       adminPassword: ADMIN_PASSWORD,
     });
-  check('duplicate slug is refused', duplicate.status === 409, `status=${duplicate.status}`);
+  check(
+    'a second school with the same name gets its own slug',
+    sameName.status === 201 && sameName.body?.tenant?.slug === `${SLUG}-2`,
+    `status=${sameName.status} slug=${sameName.body?.tenant?.slug}`,
+  );
+  if (sameName.body?.tenant?.id) {
+    const otherTenantId = sameName.body.tenant.id as string;
+    await prisma.platformAuditLog.deleteMany({ where: { tenantId: otherTenantId } });
+    await prisma.tenant.delete({ where: { id: otherTenantId } });
+    await prisma.user.deleteMany({ where: { email: `other-${STAMP}@smoke.school` } });
+  }
 
   const weakPassword = await request(server)
     .post('/api/platform/tenants')
     .set('Authorization', auth)
     .send({
       name: `Smoke School ${STAMP}`,
-      slug: `smoke-weak-${STAMP}`,
+      countryCode: 'SA',
       adminName: 'Smoke Admin',
       adminEmail: `weak-${STAMP}@smoke.school`,
       adminPassword: 'short',
@@ -139,17 +194,15 @@ async function main() {
     .get(`/api/platform/tenants/${tenantId}`)
     .set('Authorization', auth);
   check(
-    'provisioned school carries its modules, flags, and license',
+    'the school gets every portal and every feature flag',
     detail.status === 200 &&
-      (detail.body?.modules ?? []).filter((row: { enabled: boolean }) => row.enabled).length === 2 &&
-      (detail.body?.featureFlags ?? []).some(
-        (row: { key: string; enabled: boolean }) =>
-          row.key === 'notifications.whatsapp' && row.enabled,
-      ) &&
+      (detail.body?.modules ?? []).filter((row: { enabled: boolean }) => row.enabled).length ===
+        7 &&
+      (detail.body?.featureFlags ?? []).length === 5 &&
       (detail.body?.licenses ?? []).length === 1,
     JSON.stringify({
-      modules: detail.body?.modules,
-      flags: detail.body?.featureFlags,
+      modules: detail.body?.modules?.length,
+      flags: detail.body?.featureFlags?.length,
       licenses: detail.body?.licenses?.length,
     }),
   );

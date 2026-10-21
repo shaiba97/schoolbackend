@@ -1,31 +1,47 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PortalModule } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
-  IsArray,
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
-  Length,
-  Matches,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
+import { MARKETS } from '../platform-markets';
+
+const MARKET_CODES = MARKETS.map((market) => market.code);
+
+/**
+ * The school a super admin provisions.
+ *
+ * There is no slug in this contract: the platform derives one from the
+ * school name, because a slug is a URL detail, not something an operator
+ * should have to invent. The market decides the currency and the timezone,
+ * so a school can never end up billing in a currency that does not match
+ * the country it is in.
+ */
 export class ProvisionTenantDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'Springfield Academy' })
   @IsString()
   @MinLength(2)
   @MaxLength(200)
   name!: string;
 
-  @ApiPropertyOptional({ description: 'Defaults to a slug of the name' })
+  @ApiPropertyOptional({
+    description: 'The school name in Arabic, for schools that trade in both',
+  })
   @IsOptional()
   @IsString()
-  @Matches(/^[a-z0-9][a-z0-9-]{1,98}[a-z0-9]$/, {
-    message: 'The slug may only contain lowercase letters, digits, and hyphens',
-  })
-  slug?: string;
+  @MaxLength(200)
+  nameAr?: string;
+
+  @ApiProperty({ enum: MARKET_CODES })
+  @IsEnum(MARKET_CODES)
+  countryCode!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -35,24 +51,8 @@ export class ProvisionTenantDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   phone?: string;
-
-  @ApiPropertyOptional({ example: 'SD' })
-  @IsOptional()
-  @IsString()
-  @Length(2, 2)
-  countryCode?: string;
-
-  @ApiPropertyOptional({ example: 'SDG' })
-  @IsOptional()
-  @IsString()
-  @Length(3, 3)
-  currencyCode?: string;
-
-  @ApiPropertyOptional({ example: 'Africa/Khartoum' })
-  @IsOptional()
-  @IsString()
-  timezone?: string;
 
   @ApiProperty({ description: 'Full name of the first school administrator' })
   @IsString()
@@ -62,6 +62,12 @@ export class ProvisionTenantDto {
   @ApiProperty()
   @IsEmail()
   adminEmail!: string;
+
+  @ApiPropertyOptional({ description: 'Administrator phone number' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  adminPhone?: string;
 
   @ApiProperty()
   @IsString()
@@ -76,18 +82,12 @@ export class ProvisionTenantDto {
   planCode?: string;
 
   @ApiPropertyOptional({
-    enum: PortalModule,
-    description: 'Portals to switch on. All portals are enabled when omitted.',
-  })
-  @IsOptional()
-  @IsArray()
-  @IsEnum(PortalModule, { each: true })
-  modules?: PortalModule[];
-
-  @ApiPropertyOptional({
     description:
-      'Feature flag overrides, e.g. { "notifications.whatsapp": true }',
+      'Students the licence covers. The plan price is per student per month, so this number sets the monthly amount.',
   })
   @IsOptional()
-  featureFlags?: Record<string, boolean>;
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  studentCount?: number;
 }

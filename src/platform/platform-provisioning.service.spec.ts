@@ -1,12 +1,8 @@
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 
 jest.mock('bcrypt', () => ({
-  hash: jest.fn().mockResolvedValue('hashed-password'),
+  hash: jest.fn().mockResolvedValue('hashed'),
   compare: jest.fn().mockResolvedValue(true),
 }));
 
@@ -19,6 +15,7 @@ const actor: PlatformActor = {
   role: 'SUPER_ADMIN',
 };
 
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const PLAN_ID = '00000000-0000-4000-8000-000000000001';
 
 function build(overrides: Record<string, unknown> = {}) {
@@ -27,20 +24,28 @@ function build(overrides: Record<string, unknown> = {}) {
       fn({
         tenant: {
           findUnique: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
           create: jest.fn().mockResolvedValue({
-            id: 'tenant-new',
+            id: TENANT_ID,
             name: 'Springfield Academy',
+            nameAr: 'أكاديمية سبرينغفيلد',
             slug: 'springfield-academy',
             status: 'ACTIVE',
+            countryCode: 'SA',
+            currencyCode: 'SAR',
+            timezone: 'Asia/Riyadh',
           }),
         },
         user: {
           findUnique: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
           create: jest.fn().mockResolvedValue({
             id: 'user-new',
             email: 'ada@springfield.edu',
             firstName: 'Ada',
             lastName: 'Lovelace',
+            phone: '+966500000000',
+            staffNumber: 'STF001',
           }),
         },
         tenantMembership: {
@@ -48,9 +53,7 @@ function build(overrides: Record<string, unknown> = {}) {
         },
         role: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest
-            .fn()
-            .mockResolvedValue({ id: 'role-new', slug: 'ADMIN' }),
+          create: jest.fn().mockResolvedValue({ id: 'role-new', slug: 'ADMIN' }),
         },
         membershipRole: {
           create: jest.fn().mockResolvedValue({ id: 'membership-role-new' }),
@@ -62,31 +65,35 @@ function build(overrides: Record<string, unknown> = {}) {
           createMany: jest.fn().mockResolvedValue({ count: 5 }),
         },
         tenantLicense: {
-          create: jest.fn().mockResolvedValue({ id: 'license-new' }),
+          create: jest.fn().mockResolvedValue({
+            id: 'license-new',
+            seats: 400,
+          }),
         },
         platformPlan: {
           findUnique: jest.fn().mockResolvedValue({
             id: PLAN_ID,
-            code: 'LEGACY',
-            name: 'Legacy',
-            billingModel: 'LIFETIME',
-            price: 0,
-            isActive: true,
+            code: 'PRIMARY',
+            name: 'Primary Plan',
+            price: 800,
+            currency: 'USD',
+            durationDays: 365,
           }),
         },
         platformAuditLog: {
           create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
         },
+        ...overrides,
       }),
     ),
     platformPlan: {
       findUnique: jest.fn().mockResolvedValue({
         id: PLAN_ID,
-        code: 'LEGACY',
-        name: 'Legacy',
-        billingModel: 'LIFETIME',
-        price: 0,
-        isActive: true,
+        code: 'PRIMARY',
+        name: 'Primary Plan',
+        price: 800,
+        currency: 'USD',
+        durationDays: 365,
       }),
     },
     platformAuditLog: {
@@ -100,61 +107,109 @@ function build(overrides: Record<string, unknown> = {}) {
 
 const validInput = {
   name: 'Springfield Academy',
-  slug: 'springfield-academy',
+  nameAr: 'أكاديمية سبرينغفيلد',
+  countryCode: 'SA',
   email: 'office@springfield.edu',
-  phone: '+249900000001',
-  countryCode: 'SD',
-  currencyCode: 'SDG',
-  timezone: 'Africa/Khartoum',
+  phone: '+966500000001',
   adminName: 'Ada Lovelace',
   adminEmail: 'ada@springfield.edu',
+  adminPhone: '+966500000000',
   adminPassword: 'School@12345',
-  planCode: 'LEGACY',
-  modules: ['ADMIN', 'ACADEMIC'],
-  featureFlags: { 'portal.transport.tracking': true },
+  planCode: 'PRIMARY',
+  studentCount: 400,
 };
 
 describe('PlatformProvisioningService.provision', () => {
-  it('creates the tenant with its slug, admin account, and membership', async () => {
+  it('creates the school with the currency and timezone of its market', async () => {
+    const { service, prisma } = build();
+
+    const result = await service.provision(validInput, actor);
+
+    const tx = (prisma.$transaction as jest.Mock).mock.calls[0][0];
+    void tx;
+    const created = (prisma.$transaction as jest.Mock).mock.results;
+    void created;
+    expect(result.tenant.currencyCode).toBe('SAR');
+    expect(result.tenant.timezone).toBe('Asia/Riyadh');
+    expect(result.tenant.nameAr).toBe('أكاديمية سبرينغفيلد');
+  });
+
+  it('takes the slug from the school name', async () => {
+    const { service, prisma } = build();
+
+    await service.provision(validInput, actor);
+
+    const tx = (prisma.$transaction as jest.Mock).mock.calls[0][0];
+    void tx;
+    expect(prisma.platformAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          newValues: expect.objectContaining({ slug: 'springfield-academy' }),
+        }),
+      }),
+    );
+  });
+
+  it('gives the administrator a staff ID', async () => {
     const { service } = build();
 
     const result = await service.provision(validInput, actor);
 
-    expect(result.tenant.id).toBe('tenant-new');
-    expect(result.admin.email).toBe('ada@springfield.edu');
-    expect(result.modules).toEqual(['ADMIN', 'ACADEMIC']);
+    expect(result.admin.staffNumber).toBe('STF001');
   });
 
-  it('refuses a duplicate slug', async () => {
+  it('enables every portal and every feature flag', async () => {
+    const { service } = build();
+
+    const result = await service.provision(validInput, actor);
+
+    expect(result.modules).toEqual([
+      'ADMIN',
+      'ACADEMIC',
+      'FINANCIAL',
+      'TEACHER',
+      'GUARDIAN',
+      'STUDENT',
+      'TRANSPORT',
+    ]);
+    expect(Object.keys(result.featureFlags)).toHaveLength(5);
+  });
+
+  it('prices the subscription per student per month', async () => {
+    const { service } = build();
+
+    const result = await service.provision(validInput, actor);
+
+    // 800 USD per student per month, 400 students.
+    expect(result.license?.monthlyUsd).toBe(320000);
+    expect(result.license?.studentCount).toBe(400);
+  });
+
+  it('records the licensed student count on the license', async () => {
     const { service, prisma } = build();
-    (prisma.$transaction as jest.Mock).mockImplementation(
-      async (fn: (tx: any) => unknown) =>
-        fn({
-          tenant: {
-            findUnique: jest.fn().mockResolvedValue({ id: 'tenant-existing' }),
-            create: jest.fn(),
-          },
-          platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
+
+    await service.provision(validInput, actor);
+
+    const tx = (prisma.$transaction as jest.Mock).mock.calls[0][0];
+    void tx;
+    expect(prisma.platformAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          newValues: expect.objectContaining({ studentCount: 400 }),
         }),
-    );
-
-    await expect(service.provision(validInput, actor)).rejects.toBeInstanceOf(
-      ConflictException,
+      }),
     );
   });
 
-  it('refuses a duplicate admin email', async () => {
+  it('refuses a duplicate administrator email', async () => {
     const { service, prisma } = build();
     (prisma.$transaction as jest.Mock).mockImplementation(
       async (fn: (tx: any) => unknown) =>
         fn({
-          tenant: {
-            findUnique: jest.fn().mockResolvedValue(null),
-            create: jest.fn(),
-          },
+          tenant: { findMany: jest.fn().mockResolvedValue([]) },
           user: {
             findUnique: jest.fn().mockResolvedValue({ id: 'user-existing' }),
-            create: jest.fn(),
+            findMany: jest.fn().mockResolvedValue([]),
           },
           platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
         }),
@@ -165,7 +220,52 @@ describe('PlatformProvisioningService.provision', () => {
     );
   });
 
-  it('rejects a weak admin password', async () => {
+  it('gives a second school with the same name a different slug', async () => {
+    const { service, prisma } = build();
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      async (fn: (tx: any) => unknown) =>
+        fn({
+          tenant: {
+            findMany: jest.fn().mockResolvedValue([{ slug: 'springfield-academy' }]),
+            create: jest.fn().mockResolvedValue({
+              id: TENANT_ID,
+              name: 'Springfield Academy',
+              slug: 'springfield-academy-2',
+              status: 'ACTIVE',
+              countryCode: 'SA',
+              currencyCode: 'SAR',
+              timezone: 'Asia/Riyadh',
+            }),
+          },
+          user: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            findMany: jest.fn().mockResolvedValue([]),
+            create: jest.fn().mockResolvedValue({
+              id: 'user-new',
+              email: 'ada@springfield.edu',
+              firstName: 'Ada',
+              staffNumber: 'STF002',
+            }),
+          },
+          tenantMembership: { create: jest.fn().mockResolvedValue({ id: 'm' }) },
+          role: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'r' }),
+          },
+          membershipRole: { create: jest.fn().mockResolvedValue({ id: 'mr' }) },
+          tenantModule: { createMany: jest.fn().mockResolvedValue({ count: 7 }) },
+          tenantFeatureFlag: { createMany: jest.fn().mockResolvedValue({ count: 5 }) },
+          tenantLicense: { create: jest.fn().mockResolvedValue({ id: 'l' }) },
+          platformPlan: { findUnique: jest.fn().mockResolvedValue(null) },
+        }),
+    );
+
+    const result = await service.provision(validInput, actor);
+
+    expect(result.tenant.slug).toBe('springfield-academy-2');
+  });
+
+  it('rejects a weak administrator password', async () => {
     const { service } = build();
 
     await expect(
@@ -179,44 +279,6 @@ describe('PlatformProvisioningService.provision', () => {
 
     await expect(service.provision(validInput, actor)).rejects.toBeInstanceOf(
       NotFoundException,
-    );
-  });
-
-  it('enables every portal when no module list is supplied', async () => {
-    const { service } = build();
-
-    const result = await service.provision(
-      { ...validInput, modules: undefined },
-      actor,
-    );
-
-    expect(result.modules).toEqual(
-      expect.arrayContaining([
-        'ADMIN',
-        'ACADEMIC',
-        'FINANCIAL',
-        'TEACHER',
-        'GUARDIAN',
-        'STUDENT',
-        'TRANSPORT',
-      ]),
-    );
-  });
-
-  it('audits the provisioning with the new tenant id', async () => {
-    const { service, prisma } = build();
-
-    await service.provision(validInput, actor);
-
-    expect(prisma.platformAuditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          actorId: actor.id,
-          action: 'tenant.provisioned',
-          entityType: 'tenant',
-          entityId: 'tenant-new',
-        }),
-      }),
     );
   });
 

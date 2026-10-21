@@ -194,6 +194,7 @@ export class PlatformFinancialsService {
               status: true,
               startedAt: true,
               expiresAt: true,
+              seats: true,
               plan: {
                 select: { code: true, name: true, price: true, currency: true },
               },
@@ -218,7 +219,11 @@ export class PlatformFinancialsService {
     return tenants.map((tenant) => {
       const license = tenant.licenses[0] ?? null;
       const plan = license?.plan ?? null;
-      const priceUsd = plan ? Number(plan.price) : 0;
+      // The tier price is per student per month, so the monthly amount is
+      // the rate times the licensed student count.
+      const studentCount = license?.seats ?? 0;
+      const pricePerStudent = plan ? Number(plan.price) : 0;
+      const priceUsd = pricePerStudent * (studentCount > 0 ? studentCount : 1);
       const currency = tenant.currencyCode || 'USD';
       const rate = rateOf(currency);
       // Without a rate the local price cannot be computed. Showing the USD
@@ -253,6 +258,8 @@ export class PlatformFinancialsService {
         tier: plan?.code ?? null,
         tierName: plan?.name ?? null,
         licenseId: license?.id ?? null,
+        studentCount,
+        pricePerStudent,
         startedAt: license?.startedAt ?? null,
         expiresAt: license?.expiresAt ?? null,
         currency,

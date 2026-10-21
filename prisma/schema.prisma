@@ -321,6 +321,11 @@ enum DayOfWeek {
 model Tenant {
   id   String @id @default(uuid()) @db.Uuid
   name String @db.VarChar(200)
+
+  // Arabic name, for schools that trade in both languages. `name` stays the
+  // name the platform uses everywhere else.
+  nameAr String? @map("name_ar") @db.VarChar(200)
+
   slug String @unique @db.VarChar(100)
 
   email String? @db.VarChar(320)
