@@ -156,6 +156,16 @@ export class RenewSubscriptionDto {
   @IsOptional()
   @IsUUID()
   licenseId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Students the licence covers after the renewal. The tier price is per student per month, so this sets the monthly amount.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  studentCount?: number;
 }
 
 export class UpgradeSubscriptionDto {

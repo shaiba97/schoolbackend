@@ -321,6 +321,72 @@ describe('PlatformPlansService.subscriptions', () => {
     expect(rows[0].lockStatus).toBe('TERMINATED');
     expect(rows[0].lockReason).toBe('LICENSE_EXPIRED');
   });
+
+  it('reports the licensed students and the monthly amount', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: TENANT_ID,
+        name: 'Springfield Academy',
+        slug: 'springfield',
+        countryCode: 'SA',
+        currencyCode: 'SAR',
+        status: 'ACTIVE',
+        logoUrl: null,
+        lockedAt: null,
+        lockReason: null,
+        licenses: [
+          {
+            id: LICENSE_ID,
+            status: 'ACTIVE',
+            startedAt: new Date('2026-01-01'),
+            expiresAt: new Date('2026-12-31'),
+            terminatedAt: null,
+            seats: 400,
+            plan: {
+              id: PLAN_ID,
+              code: 'PRIMARY',
+              name: 'Primary Plan',
+              tier: 'PRIMARY',
+              price: 800,
+              currency: 'USD',
+              durationDays: 365,
+            },
+          },
+        ],
+      },
+    ]);
+
+    const rows = await service.subscriptions();
+
+    expect(rows[0].studentCount).toBe(400);
+    // 800 per student per month, 400 students.
+    expect(rows[0].monthlyUsd).toBe(320000);
+  });
+
+  it('reports a subscription with no licence as having no students', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: TENANT_ID,
+        name: 'Springfield Academy',
+        slug: 'springfield',
+        countryCode: 'SA',
+        currencyCode: 'SAR',
+        status: 'ACTIVE',
+        logoUrl: null,
+        lockedAt: null,
+        lockReason: null,
+        licenses: [],
+      },
+    ]);
+
+    const rows = await service.subscriptions();
+
+    expect(rows[0].status).toBe('NO_LICENSE');
+    expect(rows[0].studentCount).toBe(0);
+    expect(rows[0].monthlyUsd).toBe(0);
+  });
 });
 
 describe('PlatformPlansService.renew', () => {
@@ -405,6 +471,36 @@ describe('PlatformPlansService.renew', () => {
 
     await expect(service.renew(TENANT_ID, {}, actor)).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+
+  it('can carry a new licensed student count into the renewal', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          plan: { id: PLAN_ID, code: 'PRIMARY', durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.renew(TENANT_ID, { studentCount: 250 }, actor);
+
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ seats: 250, status: 'ACTIVE' }),
+      }),
     );
   });
 });
@@ -510,6 +606,81 @@ describe('PlatformPlansService.upgrade', () => {
 
     await expect(service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor)).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+
+  it('starts the new tier term when a school moves off a lifetime plan', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'ADVANCED',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: null,
+          terminatedAt: null,
+          plan: { id: 'legacy-plan', code: 'LEGACY', durationDays: 0 },
+        },
+      ],
+    });
+
+    await service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor);
+
+    const call = (prisma.tenantLicense.update as jest.Mock).mock.calls[0][0];
+    const expiresAt = call.data.expiresAt as Date;
+    const days = Math.round((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+    expect(days).toBeGreaterThanOrEqual(364);
+    expect(days).toBeLessThanOrEqual(365);
+  });
+
+  it('unlocks a school whose term ended when it moves to a new tier', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'ADVANCED',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'SUSPENDED',
+      lockedAt: new Date('2026-04-01'),
+      lockReason: 'LICENSE_EXPIRED',
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'EXPIRED',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-03-31'),
+          terminatedAt: new Date('2026-04-01'),
+          plan: { id: 'legacy-plan', code: 'LEGACY', durationDays: 0 },
+        },
+      ],
+    });
+
+    await service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor);
+
+    expect(prisma.tenant.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: TENANT_ID },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          lockedAt: null,
+          lockReason: null,
+        }),
+      }),
     );
   });
 });

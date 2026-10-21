@@ -38,6 +38,8 @@ export type TierUpdate = {
 const CODE_PATTERN = /^[A-Z0-9][A-Z0-9_-]{1,59}$/;
 const EXPIRING_SOON_DAYS = 30;
 
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
 /**
  * The plan catalogue and the subscriptions that sit on it: which schools
  * hold which tier, when the term ends, and the three actions an operator
@@ -210,6 +212,7 @@ export class PlatformPlansService {
             startedAt: true,
             expiresAt: true,
             terminatedAt: true,
+            seats: true,
             plan: {
               select: {
                 id: true,
@@ -268,8 +271,16 @@ export class PlatformPlansService {
         tier: plan?.code ?? null,
         tierName: plan?.name ?? null,
         tierLabel: plan?.tier ?? null,
+        // The tier price is per student per month, so the monthly amount is
+        // the rate times the licensed students.
         price: plan ? Number(plan.price) : null,
         currency: plan?.currency ?? 'USD',
+        studentCount: license?.seats ?? 0,
+        monthlyUsd: plan
+          ? round2(
+              Number(plan.price) * (license?.seats && license.seats > 0 ? license.seats : 1),
+            )
+          : 0,
         startedAt: license?.startedAt ?? null,
         expiresAt,
         daysRemaining,
@@ -283,7 +294,7 @@ export class PlatformPlansService {
 
   async renew(
     tenantId: string,
-    input: { expiresAt?: Date; licenseId?: string },
+    input: { expiresAt?: Date; licenseId?: string; studentCount?: number },
     actor: PlatformActor,
   ) {
     const tenant = await this.tenantWithLicenses(tenantId, input.licenseId);
@@ -301,6 +312,11 @@ export class PlatformPlansService {
         expiresAt,
         terminatedAt: null,
         terminationReason: null,
+        // The licensed student count sets the monthly amount, so a renewal
+        // may carry a new one.
+        ...(input.studentCount !== undefined
+          ? { seats: input.studentCount > 0 ? input.studentCount : null }
+          : {}),
       },
     });
 
@@ -408,13 +424,29 @@ export class PlatformPlansService {
       return { licenseId: created.id, tenantId: tenant.id, tier: plan.code };
     }
 
+    // Moving to a tier starts that tier's term. A licence that came from the
+    // lifetime plan has no end date, so without this the school would sit on
+    // a yearly tier and never end.
+    const termEndsAt =
+      input.expiresAt ??
+      new Date(Date.now() + (plan.durationDays || 365) * 24 * 60 * 60 * 1000);
+
     await this.prisma.tenantLicense.update({
       where: { id: license.id },
       data: {
         planId: plan.id,
-        ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+        expiresAt: termEndsAt,
       },
     });
+
+    // A school locked because its term ended gets its access back with the
+    // new term.
+    if (tenant.lockReason === 'LICENSE_EXPIRED') {
+      await this.prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { status: 'ACTIVE', lockedAt: null, lockReason: null },
+      });
+    }
 
     await this.syncPortals(tenant.id, plan.includedModules);
 
@@ -424,7 +456,11 @@ export class PlatformPlansService {
       entityId: license.id,
       tenantId: tenant.id,
       oldValues: { planCode: license.plan.code, planId: license.plan.id },
-      newValues: { planCode: plan.code, planId: plan.id },
+      newValues: {
+        planCode: plan.code,
+        planId: plan.id,
+        expiresAt: termEndsAt,
+      },
     });
 
     return { licenseId: license.id, tenantId: tenant.id, tier: plan.code };

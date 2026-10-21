@@ -22,6 +22,9 @@ import { PlatformTenantsController } from '../src/platform/platform-tenants.cont
 import { PlatformAuthService } from '../src/platform/platform-auth.service';
 import { PlatformTenantsService } from '../src/platform/platform-tenants.service';
 import { PlatformProvisioningService } from '../src/platform/platform-provisioning.service';
+import { PlatformPlansService } from '../src/platform/platform-plans.service';
+import { PlatformPlansController } from '../src/platform/platform-plans.controller';
+import { PlatformExpirationService } from '../src/platform/platform-expiration.service';
 
 const EMAIL = (process.env.PLATFORM_ADMIN_EMAIL || 'root@platform.dev').toLowerCase();
 const PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD || 'Platform@12345';
@@ -40,11 +43,17 @@ function check(name: string, ok: boolean, detail?: string) {
 async function main() {
   const moduleRef = await Test.createTestingModule({
     imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule],
-    controllers: [PlatformAuthController, PlatformTenantsController],
+    controllers: [
+      PlatformAuthController,
+      PlatformTenantsController,
+      PlatformPlansController,
+    ],
     providers: [
       PlatformAuthService,
       PlatformTenantsService,
       PlatformProvisioningService,
+      PlatformPlansService,
+      PlatformExpirationService,
       PlatformAdminGuard,
       PlatformRoleGuard,
       { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -227,6 +236,58 @@ async function main() {
 
   const anonymous = await request(server).get('/api/platform/stats');
   check('stats refuses an unauthenticated caller', anonymous.status === 401);
+
+  // A school moved to a yearly tier gets a term, and the sweep ends it when
+  // the term runs out.
+  const plans = await request(server).get('/api/platform/plans').set('Authorization', auth);
+  const yearly = (plans.body ?? []).find(
+    (plan: { code: string; durationDays: number }) => plan.durationDays > 0,
+  );
+  if (yearly) {
+    const upgraded = await request(server)
+      .post(`/api/platform/plans/subscriptions/${tenantId}/upgrade`)
+      .set('Authorization', auth)
+      .send({ planId: yearly.id });
+    check(
+      'moving to a yearly tier starts the term',
+      upgraded.status === 201 && Boolean(upgraded.body?.tier),
+      `status=${upgraded.status} body=${JSON.stringify(upgraded.body)}`,
+    );
+
+    const subs = await request(server)
+      .get('/api/platform/plans/subscriptions')
+      .set('Authorization', auth);
+    const row = (subs.body ?? []).find(
+      (entry: { tenantId: string }) => entry.tenantId === tenantId,
+    );
+    check(
+      'the subscription reports a term and a monthly amount',
+      Boolean(row?.expiresAt) && typeof row?.monthlyUsd === 'number',
+      `expiresAt=${row?.expiresAt} monthlyUsd=${row?.monthlyUsd} students=${row?.studentCount}`,
+    );
+
+    const renewed = await request(server)
+      .post(`/api/platform/plans/subscriptions/${tenantId}/renew`)
+      .set('Authorization', auth)
+      .send({ studentCount: 321 });
+    check(
+      'a renewal can carry a new student count',
+      renewed.status === 201,
+      `status=${renewed.status}`,
+    );
+
+    const afterRenewal = await request(server)
+      .get('/api/platform/plans/subscriptions')
+      .set('Authorization', auth);
+    const renewedRow = (afterRenewal.body ?? []).find(
+      (entry: { tenantId: string }) => entry.tenantId === tenantId,
+    );
+    check(
+      'the licensed student count follows the renewal',
+      renewedRow?.studentCount === 321,
+      `studentCount=${renewedRow?.studentCount}`,
+    );
+  }
 
   await app.close();
   console.log(failures === 0 ? '\nall checks passed\n' : `\n${failures} check(s) failed\n`);
