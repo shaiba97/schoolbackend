@@ -1,0 +1,18 @@
+# Normalise line endings: the repository stores LF, Windows checkouts stay LF
+# for source so a CRLF round-trip can never corrupt non-ASCII content
+# (em dashes, BOMs) in a file that was written on another platform.
+* text=auto eol=lf
+
+# Windows launch scripts must keep CRLF to run.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets are never rewritten.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
