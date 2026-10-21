@@ -9,6 +9,7 @@
     "build": "nest build",
     "prisma:generate": "prisma generate && node scripts/sync-prisma-schema-hash.mjs",
     "db:parity": "tsx scripts/check-branch-parity.ts",
+    "seed:plans": "tsx scripts/seed-platform-plans.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

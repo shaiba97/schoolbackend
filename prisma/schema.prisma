@@ -338,6 +338,14 @@ model Tenant {
 
   status TenantStatus @default(ACTIVE)
 
+  // Provider lock. A locked tenant keeps its data and its memberships but
+  // every tenant-facing API call is refused until the lock is lifted.
+  // `lockReason` is one of LICENSE_EXPIRED, MANUAL_TERMINATION,
+  // PROVIDER_SUSPENSION - it is the reason the school was locked, not a
+  // free-text note.
+  lockedAt   DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockReason String?   @map("lock_reason") @db.VarChar(40)
+
   settings Json @default("{}")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -421,12 +429,12 @@ model Tenant {
   transportTrips              TransportTrip[]
   transportTripEvents         TransportTripEvent[]
 
-  licenses          TenantLicense[]
-  platformInvoices  PlatformInvoice[]
-  modules           TenantModule[]
-  featureFlags      TenantFeatureFlag[]
-  impersonations    ImpersonationSession[]
-  platformBackups   PlatformBackup[]
+  licenses         TenantLicense[]
+  platformInvoices PlatformInvoice[]
+  modules          TenantModule[]
+  featureFlags     TenantFeatureFlag[]
+  impersonations   ImpersonationSession[]
+  platformBackups  PlatformBackup[]
 
   @@index([status])
   @@map("tenants")
@@ -479,7 +487,7 @@ model User {
   staffPositionAssignments StaffPositionAssignment[]
   salaryPayouts            SalaryPayout[]
 
-  platformAdmin   PlatformAdmin?
+  platformAdmin PlatformAdmin?
 
   @@index([status])
   @@map("users")
@@ -2775,15 +2783,24 @@ model PlatformAdmin {
   lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  impersonations ImpersonationSession[]
-  recordedExpensesInvoices PlatformInvoice[] @relation("PlatformInvoiceRecorder")
-  backups        PlatformBackup[]
-  auditEntries   PlatformAuditLog[]     @relation("PlatformAuditActor")
-  announcements  PlatformAnnouncement[] @relation("PlatformAnnouncementAuthor")
+  user                     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonations           ImpersonationSession[]
+  recordedExpensesInvoices PlatformInvoice[]      @relation("PlatformInvoiceRecorder")
+  backups                  PlatformBackup[]
+  auditEntries             PlatformAuditLog[]     @relation("PlatformAuditActor")
+  announcements            PlatformAnnouncement[] @relation("PlatformAnnouncementAuthor")
 
   @@index([status])
   @@map("platform_admins")
+}
+
+enum PlanTier {
+  PRIMARY
+  INTERMEDIATE
+  ADVANCED
+  CUSTOM
+
+  @@map("plan_tier")
 }
 
 model PlatformPlan {
@@ -2798,12 +2815,38 @@ model PlatformPlan {
   currency String  @default("USD") @db.Char(3)
   isActive Boolean @default(true) @map("is_active")
 
+  // NULL tier = a legacy row (self-onboarded schools on the LEGACY plan)
+  // that predates the tier catalogue.
+  tier PlanTier?
+
+  // Audience line shown on the tier card ("Small schools / Early-stage academies").
+  target String? @db.VarChar(200)
+
+  // Portals the tier entitles a school to. Descriptive today: the tenant
+  // request path does not gate on module rows yet.
+  includedModules PortalModule[] @default([]) @map("included_modules")
+
+  // Feature flags and limits the tier grants, e.g.
+  // { "whatsappAttendance": true, "maxStudents": 500, "slaHours": 8 }.
+  features Json @default("{}")
+
+  // Upper bound of the tier price when it is quoted as a range.
+  priceMax Decimal? @map("price_max") @db.Decimal(12, 2)
+
+  // Default license term in days; used when a subscription is renewed
+  // without an explicit end date.
+  durationDays Int @default(365) @map("duration_days")
+
+  // Card order in the console.
+  sortOrder Int @default(0) @map("sort_order")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   licenses TenantLicense[]
 
   @@index([isActive])
+  @@index([tier])
   @@map("platform_plans")
 }
 
@@ -2820,15 +2863,22 @@ model TenantLicense {
 
   notes String? @db.VarChar(400)
 
+  // Set when the license is ended early (manual termination) or by the
+  // expiration sweep. A null value means the term is still running.
+  terminatedAt      DateTime? @map("terminated_at") @db.Timestamptz(6)
+  terminationReason String?   @map("termination_reason") @db.VarChar(40)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan     PlatformPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     PlatformPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
   invoices PlatformInvoice[]
 
   @@unique([id, tenantId])
   @@index([tenantId, status])
+  // Drives the expiration sweep: "active licenses that ended before now".
+  @@index([status, expiresAt])
   @@map("tenant_licenses")
 }
 
@@ -2838,7 +2888,7 @@ model PlatformInvoice {
 
   licenseId String? @map("license_id") @db.Uuid
 
-  number String @unique @db.VarChar(40)
+  number String        @unique @db.VarChar(40)
   kind   InvoiceKind
   status InvoiceStatus @default(DUE)
 
@@ -2850,10 +2900,10 @@ model PlatformInvoice {
 
   notes String? @db.VarChar(400)
 
-  recordedById String? @map("recorded_by_id") @db.Uuid
+  recordedById String?  @map("recorded_by_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   license    TenantLicense? @relation(fields: [licenseId, tenantId], references: [id, tenantId], onDelete: SetNull)
   recordedBy PlatformAdmin? @relation("PlatformInvoiceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
 
@@ -2867,7 +2917,7 @@ model TenantModule {
   tenantId String @map("tenant_id") @db.Uuid
 
   module  PortalModule
-  enabled Boolean @default(true)
+  enabled Boolean      @default(true)
 
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -2882,7 +2932,7 @@ model TenantFeatureFlag {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @map("tenant_id") @db.Uuid
 
-  key     String @db.VarChar(80)
+  key     String  @db.VarChar(80)
   enabled Boolean @default(false)
 
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -2895,11 +2945,11 @@ model TenantFeatureFlag {
 }
 
 model PlatformAuditLog {
-  id      String @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
 
   actorId String? @map("actor_id") @db.Uuid
 
-  action     String @db.VarChar(80)
+  action     String  @db.VarChar(80)
   entityType String? @map("entity_type") @db.VarChar(60)
   entityId   String? @map("entity_id") @db.Uuid
 
@@ -2924,14 +2974,14 @@ model PlatformAuditLog {
 model PlatformAnnouncement {
   id String @id @default(uuid()) @db.Uuid
 
-  title    String @db.VarChar(200)
-  body     String @db.Text
+  title    String               @db.VarChar(200)
+  body     String               @db.Text
   severity AnnouncementSeverity @default(INFO)
 
-  isActive   Boolean @default(true) @map("is_active")
+  isActive    Boolean  @default(true) @map("is_active")
   publishedAt DateTime @default(now()) @map("published_at") @db.Timestamptz(6)
 
-  createdById String @map("created_by_id") @db.Uuid
+  createdById String   @map("created_by_id") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   createdBy PlatformAdmin @relation("PlatformAnnouncementAuthor", fields: [createdById], references: [id], onDelete: Restrict)
@@ -2943,8 +2993,8 @@ model PlatformAnnouncement {
 model ImpersonationSession {
   id String @id @default(uuid()) @db.Uuid
 
-  tenantId       String @map("tenant_id") @db.Uuid
-  targetUserId   String @map("target_user_id") @db.Uuid
+  tenantId        String @map("tenant_id") @db.Uuid
+  targetUserId    String @map("target_user_id") @db.Uuid
   platformAdminId String @map("platform_admin_id") @db.Uuid
 
   // SHA-256 of the one-time code; the raw code is shown to the platform
@@ -2957,8 +3007,8 @@ model ImpersonationSession {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  platformAdmin PlatformAdmin  @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
 
   @@index([platformAdminId, createdAt])
   @@map("impersonation_sessions")
@@ -2973,7 +3023,7 @@ model PlatformBackup {
   format    String @db.VarChar(10)
   sizeBytes BigInt @map("size_bytes")
 
-  createdById String? @map("created_by_id") @db.Uuid
+  createdById String?  @map("created_by_id") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   tenant    Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
