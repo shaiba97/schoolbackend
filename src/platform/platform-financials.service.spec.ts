@@ -326,7 +326,8 @@ describe('PlatformFinancialsService.subscriptions', () => {
             payments: [
               {
                 id: 'p1',
-                amount: 1093.76,
+                // One term of 3,500 USD at 3.75 SAR per dollar.
+                amount: 13125,
                 currency: 'SAR',
                 type: 'CASH_DEPOSIT',
               },

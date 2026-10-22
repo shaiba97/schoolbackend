@@ -240,6 +240,9 @@ export class PlatformFinancialsService {
         license?.expiresAt,
         plan?.durationDays ?? 365,
       );
+      // Money is collected for the whole term, so the term total is what the
+      // school owes and what a payment is measured against.
+      const termUsd = termTotal(yearlyPrice, years ?? 0);
       const currency = tenant.currencyCode || 'USD';
       const rate = rateOf(currency);
       // Without a rate the local price cannot be computed. Showing the USD
@@ -249,6 +252,7 @@ export class PlatformFinancialsService {
       // The local price is rounded once, so a payment of exactly the rounded
       // amount covers the subscription rather than falling a cent short.
       const localPrice = rate === null ? null : round2(monthlyPrice * rate);
+      const localTermTotal = rate === null ? null : round2(termUsd * rate);
 
       const paidAmount = (license?.payments ?? []).reduce(
         (sum, payment) => sum + Number(payment.amount),
@@ -262,7 +266,7 @@ export class PlatformFinancialsService {
         ? 'UNPRICED'
         : paidAmount <= 0
           ? 'OVERDUE'
-          : paidAmount + 1e-9 >= (localPrice ?? 0)
+          : paidAmount + 1e-9 >= (localTermTotal ?? 0)
             ? 'PAID'
             : 'PARTIAL';
 
@@ -280,20 +284,22 @@ export class PlatformFinancialsService {
         yearlyPrice,
         monthlyPrice,
         termYears: years,
-        termTotal: termTotal(yearlyPrice, years ?? 0),
+        termTotal: termUsd,
         startedAt: license?.startedAt ?? null,
         expiresAt: license?.expiresAt ?? null,
         currency,
         currencyConfigured,
         localPrice,
+        // What the term costs in the school's own currency.
+        localTermTotal,
         // The monthly amount in USD, and the yearly rate it came from.
         priceUsd: round2(monthlyPrice),
         rateToUsd: rate,
         paidAmount: round2(paidAmount),
         outstanding:
-          localPrice === null
+          localTermTotal === null
             ? null
-            : round2(Math.max(0, localPrice - paidAmount)),
+            : round2(Math.max(0, localTermTotal - paidAmount)),
         status,
         paymentType: latestPayment?.type ?? null,
       };

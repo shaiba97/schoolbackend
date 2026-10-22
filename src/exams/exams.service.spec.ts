@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import { ExamsService } from './exams.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { StorageService } from '../storage/storage.service';
+import type { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const yearId = '22222222-2222-4222-8222-222222222222';
@@ -22,7 +23,7 @@ function mockStorage() {
 }
 
 function mockRealtime() {
-  return { emitDomainEvent: jest.fn().mockResolvedValue(undefined) } as never;
+  return { emitDomainEvent: jest.fn().mockResolvedValue(undefined) } as unknown as RealtimeGateway;
 }
 
 function subject(overrides: Record<string, unknown> = {}) {

@@ -43,7 +43,7 @@ export class SchoolAdminService {
    * school holds, and the positions it may still create.
    */
   async overview(tenantId: string, userId: string) {
-    const [admin, tenant, licence, positions] = await Promise.all([
+    const [admin, tenant, licence, positions, plans] = await Promise.all([
       this.prisma.user.findFirst({
         where: { id: userId, status: { not: 'DELETED' } },
         select: {
@@ -113,6 +113,22 @@ export class SchoolAdminService {
           portal: true,
           isSystemRole: true,
           _count: { select: { memberships: true } },
+        },
+      }),
+      // The tiers a school could ask to move to, so the request dialog shows
+      // real plans with real prices rather than a free-text wish.
+      this.prisma.platformPlan.findMany({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          tier: true,
+          price: true,
+          currency: true,
+          durationDays: true,
+          includedModules: true,
         },
       }),
     ]);
@@ -202,6 +218,19 @@ export class SchoolAdminService {
         portal: position.portal,
         isSystemRole: position.isSystemRole,
         members: position._count.memberships,
+      })),
+      // The tiers a school could ask to move to. The yearly rate and the
+      // monthly equivalent shown are the tier's list, not a quote.
+      upgrades: plans.map((plan) => ({
+        id: plan.id,
+        code: plan.code,
+        name: plan.name,
+        tier: plan.tier,
+        yearlyPrice: Number(plan.price),
+        monthlyPrice: monthlyEquivalent(Number(plan.price)),
+        currency: plan.currency,
+        durationDays: plan.durationDays,
+        portals: plan.includedModules,
       })),
     };
   }

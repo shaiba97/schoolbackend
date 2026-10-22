@@ -108,9 +108,31 @@ function build(overrides: Record<string, unknown> = {}) {
         id: 'plan-1',
         code: 'ADVANCED',
         name: 'Advanced Plan',
-        price: 3500,
+        price: 3600,
         currency: 'USD',
       }),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'plan-2',
+          code: 'INTERMEDIATE',
+          name: 'Intermediate Plan',
+          tier: 'INTERMEDIATE',
+          price: 1200,
+          currency: 'USD',
+          durationDays: 365,
+          includedModules: [PortalModule.ADMIN],
+        },
+        {
+          id: 'plan-3',
+          code: 'ADVANCED',
+          name: 'Advanced Plan',
+          tier: 'ADVANCED',
+          price: 3600,
+          currency: 'USD',
+          durationDays: 365,
+          includedModules: [PortalModule.ADMIN],
+        },
+      ]),
     },
     platformAuditLog: {
       create: jest.fn().mockResolvedValue({ createdAt: new Date() }),
@@ -137,6 +159,21 @@ describe('SchoolAdminService.overview', () => {
       // 800 a year is 66.67 a month.
       yearlyPrice: 800,
       monthlyPrice: 66.67,
+    });
+  });
+
+  it('lists the tiers the school could ask to move to', async () => {
+    const { service } = build();
+
+    const result = await service.overview(TENANT_ID, USER_ID);
+
+    expect(result.upgrades.map((tier) => tier.code)).toEqual([
+      'INTERMEDIATE',
+      'ADVANCED',
+    ]);
+    expect(result.upgrades[0]).toMatchObject({
+      yearlyPrice: 1200,
+      monthlyPrice: 100,
     });
   });
 
@@ -274,23 +311,47 @@ describe('SchoolAdminService.deletePosition', () => {
 });
 
 describe('SchoolAdminService.requestTierChange', () => {
-  it('records the request for the platform to answer', async () => {
+  it('records the request with the term and what the term costs', async () => {
     const { service, prisma } = build();
 
     const result = await service.requestTierChange(TENANT_ID, USER_ID, {
       planId: 'plan-1',
+      years: 2,
       note: 'We added a transport fleet.',
     });
 
     expect(result.requested).toBe(true);
+    expect(result.plan.code).toBe('ADVANCED');
+    expect(result.years).toBe(2);
+    // 3,600 a year for two years.
+    expect(result.yearlyPrice).toBe(3600);
+    expect(result.monthlyPrice).toBe(300);
+    expect(result.termTotal).toBe(7200);
     expect(prisma.platformAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'tenant.tier_change_requested',
           tenantId: TENANT_ID,
+          newValues: expect.objectContaining({
+            requestedPlan: 'ADVANCED',
+            requestedYears: 2,
+            requestedTermTotal: 7200,
+          }),
         }),
       }),
     );
+  });
+
+  it('refuses a term shorter than a year', async () => {
+    const { service, prisma } = build();
+
+    await expect(
+      service.requestTierChange(TENANT_ID, USER_ID, {
+        planId: 'plan-1',
+        years: 0,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.platformAuditLog.create).not.toHaveBeenCalled();
   });
 
   it('reports an unknown plan', async () => {
