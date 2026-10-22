@@ -219,7 +219,9 @@ async function main() {
       .send({
         tenantId: target.tenantId,
         licenseId: target.licenseId,
-        amount: target.localPrice,
+        // A subscription is paid for the whole term, so the payment is
+        // measured against the local term total, not the monthly equivalent.
+        amount: target.localTermTotal,
         currency: target.currency,
         method: 'BANK_TRANSFER',
         paidAt: '2026-04-02T00:00:00.000Z',
@@ -254,7 +256,7 @@ async function main() {
       .send({
         tenantId: target.tenantId,
         licenseId: target.licenseId,
-        amount: target.localPrice,
+        // Omitted amount: the server prices the receipt as the term total.
         currency: target.currency,
       });
     check(

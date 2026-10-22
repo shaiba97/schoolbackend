@@ -266,9 +266,9 @@ async function main() {
       `expiresAt=${row?.expiresAt} monthlyUsd=${row?.monthlyUsd} students=${row?.studentCount}`,
     );
     check(
-      'the monthly amount is the tier price, whatever the school size',
-      row?.monthlyUsd === row?.price,
-      `monthlyUsd=${row?.monthlyUsd} price=${row?.price} students=${row?.studentCount}`,
+      'the yearly rate is the tier price, whatever the school size',
+      row?.yearlyPrice === yearly.price && row?.termTotal === yearly.price,
+      `yearlyPrice=${row?.yearlyPrice} termTotal=${row?.termTotal} price=${yearly?.price} students=${row?.studentCount}`,
     );
 
     const renewed = await request(server)

@@ -135,9 +135,10 @@ async function main() {
   );
 
   check(
-    'the subscription is priced per month',
-    created.body?.license?.monthlyUsd === (plans.body?.[0]?.price ?? 0),
-    `monthly=${created.body?.license?.monthlyUsd} price=${plans.body?.[0]?.price}`,
+    'the subscription is priced by the year',
+    created.body?.license?.yearlyUsd === (plans.body?.[0]?.price ?? 0) &&
+      created.body?.license?.termTotalUsd === (plans.body?.[0]?.price ?? 0),
+    `yearly=${created.body?.license?.yearlyUsd} termTotal=${created.body?.license?.termTotalUsd} price=${plans.body?.[0]?.price}`,
   );
 
   const duplicateEmail = await request(server)
