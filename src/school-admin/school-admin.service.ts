@@ -12,6 +12,7 @@ import {
   tierPortalsFor,
 } from '../staff/position-portals';
 import { STAFF_POSITIONS } from '../staff/dto/staff.dto';
+import { monthlyEquivalent, termTotal } from '../platform/platform-pricing';
 
 const ALL_PORTALS: PortalModule[] = [
   PortalModule.ADMIN,
@@ -84,7 +85,7 @@ export class SchoolAdminService {
           startedAt: true,
           expiresAt: true,
           seats: true,
-          monthlyPrice: true,
+          yearlyPrice: true,
           terminatedAt: true,
           terminationReason: true,
           plan: {
@@ -171,9 +172,16 @@ export class SchoolAdminService {
             daysRemaining,
             durationDays: licence.plan.durationDays,
             studentCount: licence.seats ?? 0,
-            monthlyPrice: licence.monthlyPrice
-              ? Number(licence.monthlyPrice)
+            // The yearly rate the school pays, and the monthly equivalent it
+            // is spread across.
+            yearlyPrice: licence.yearlyPrice
+              ? Number(licence.yearlyPrice)
               : Number(licence.plan.price),
+            monthlyPrice: monthlyEquivalent(
+              licence.yearlyPrice
+                ? Number(licence.yearlyPrice)
+                : Number(licence.plan.price),
+            ),
             currency: licence.plan.currency,
             portals: licence.plan.includedModules,
           }
@@ -359,13 +367,23 @@ export class SchoolAdminService {
   async requestTierChange(
     tenantId: string,
     userId: string,
-    dto: { planId: string; note?: string },
+    dto: { planId: string; years?: number; note?: string },
   ) {
     const plan = await this.prisma.platformPlan.findUnique({
       where: { id: dto.planId },
       select: { id: true, code: true, name: true, price: true, currency: true },
     });
     if (!plan) throw new NotFoundException('Plan not found');
+
+    // A term is whole years, and a year is the shortest one.
+    const years = dto.years ?? 1;
+    if (!Number.isInteger(years) || years < 1 || years > 10) {
+      throw new BadRequestException(
+        'The subscription term runs from one to ten years.',
+      );
+    }
+    const yearlyPrice = Number(plan.price);
+    const monthlyPrice = monthlyEquivalent(yearlyPrice);
 
     const audit = await this.prisma.platformAuditLog.create({
       data: {
@@ -377,6 +395,10 @@ export class SchoolAdminService {
           requestedPlan: plan.code,
           requestedPlanId: plan.id,
           requestedBy: userId,
+          requestedYears: years,
+          requestedYearlyPrice: yearlyPrice,
+          requestedMonthlyPrice: monthlyPrice,
+          requestedTermTotal: termTotal(yearlyPrice, years),
           note: dto.note?.trim() || null,
         },
       },
@@ -385,6 +407,11 @@ export class SchoolAdminService {
     return {
       requested: true,
       plan: { id: plan.id, code: plan.code, name: plan.name },
+      years,
+      yearlyPrice,
+      monthlyPrice,
+      termTotal: termTotal(yearlyPrice, years),
+      currency: plan.currency,
       requestedAt: audit.createdAt,
     };
   }

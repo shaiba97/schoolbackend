@@ -380,9 +380,10 @@ describe('PlatformPlansService.subscriptions', () => {
     const rows = await service.subscriptions();
 
     expect(rows[0].studentCount).toBe(400);
-    // The tier price is the school's monthly amount: 800 a month, whatever
-    // the school size.
-    expect(rows[0].monthlyUsd).toBe(800);
+    // The stored price is the yearly amount: 800 a year is 66.67 a month.
+    expect(rows[0].yearlyPrice).toBe(800);
+    expect(rows[0].monthlyPrice).toBe(66.67);
+    expect(rows[0].monthlyUsd).toBe(66.67);
   });
   it('reports a subscription with no licence as having no students', async () => {
     const { service, prisma } = build();
@@ -429,7 +430,7 @@ describe('PlatformPlansService.subscriptions', () => {
             expiresAt: new Date('2026-12-31'),
             terminatedAt: null,
             seats: 100,
-            monthlyPrice: 950,
+            yearlyPrice: 950,
             plan: {
               id: PLAN_ID,
               code: 'CUSTOM',
@@ -446,8 +447,9 @@ describe('PlatformPlansService.subscriptions', () => {
 
     const rows = await service.subscriptions();
 
-    expect(rows[0].price).toBe(950);
-    expect(rows[0].monthlyUsd).toBe(950);
+    expect(rows[0].yearlyPrice).toBe(950);
+    expect(rows[0].monthlyPrice).toBe(79.17);
+    expect(rows[0].monthlyUsd).toBe(79.17);
   });
 });
 
@@ -508,7 +510,8 @@ describe('PlatformPlansService.renew', () => {
           startedAt: new Date('2026-01-01'),
           expiresAt: new Date('2026-12-31'),
           terminatedAt: null,
-          plan: { id: PLAN_ID, code: 'PRIMARY', durationDays: 90 },
+          yearlyPrice: null,
+          plan: { id: PLAN_ID, code: 'PRIMARY', price: 800, durationDays: 90 },
         },
       ],
     });
@@ -522,7 +525,7 @@ describe('PlatformPlansService.renew', () => {
     expect(days).toBeLessThanOrEqual(90);
   });
 
-  it('can carry a quoted rate into the renewal', async () => {
+  it('runs the term for as many years as were asked for', async () => {
     const { service, prisma } = build();
     (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
       id: TENANT_ID,
@@ -537,17 +540,79 @@ describe('PlatformPlansService.renew', () => {
           startedAt: new Date('2026-01-01'),
           expiresAt: new Date('2026-12-31'),
           terminatedAt: null,
-          plan: { id: PLAN_ID, code: 'CUSTOM', durationDays: 365 },
+          yearlyPrice: null,
+          plan: { id: PLAN_ID, code: 'PRIMARY', price: 800, durationDays: 365 },
         },
       ],
     });
 
-    await service.renew(TENANT_ID, { monthlyPrice: 725 }, actor);
+    const result = await service.renew(TENANT_ID, { years: 3 }, actor);
+
+    const call = (prisma.tenantLicense.update as jest.Mock).mock.calls[0][0];
+    const expiresAt = call.data.expiresAt as Date;
+    const days = Math.round((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+    expect(days).toBeGreaterThanOrEqual(1094);
+    expect(days).toBeLessThanOrEqual(1096);
+    // 800 a year for three years is 2,400 due, at 66.67 a month.
+    expect(result.years).toBe(3);
+    expect(result.termTotal).toBe(2400);
+    expect(result.monthlyPrice).toBe(66.67);
+  });
+
+  it('refuses a term shorter than a year', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: null,
+          plan: { id: PLAN_ID, code: 'PRIMARY', price: 800, durationDays: 365 },
+        },
+      ],
+    });
+
+    await expect(service.renew(TENANT_ID, { years: 0 }, actor)).rejects.toThrow(
+      'The minimum subscription is one year.',
+    );
+    expect(prisma.tenantLicense.update).not.toHaveBeenCalled();
+  });
+
+  it('can carry a quoted yearly rate into the renewal', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: null,
+          plan: { id: PLAN_ID, code: 'CUSTOM', price: 0, durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.renew(TENANT_ID, { yearlyPrice: 725 }, actor);
 
     expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: LICENSE_ID },
-        data: expect.objectContaining({ monthlyPrice: 725 }),
+        data: expect.objectContaining({ yearlyPrice: 725 }),
       }),
     );
   });

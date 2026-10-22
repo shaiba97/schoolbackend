@@ -73,6 +73,7 @@ function build(overrides: Record<string, unknown> = {}) {
       create: jest.fn().mockResolvedValue({ id: 'expense-1' }),
     },
     platformInvoice: {
+      count: jest.fn().mockResolvedValue(0),
       create: jest
         .fn()
         .mockResolvedValue({ id: 'invoice-1', number: 'PLT-2026-0001' }),
@@ -222,9 +223,11 @@ describe('PlatformFinancialsService.subscriptions', () => {
       currency: 'SAR',
       status: 'OVERDUE',
     });
-    // 3,500 USD at 3.75 SAR per USD.
-    expect(rows[0].localPrice).toBe(13125);
-    expect(rows[0].priceUsd).toBe(3500);
+    // 3,600 USD a year is 300 a month, and 3.75 SAR to the dollar.
+    expect(rows[0].yearlyPrice).toBe(3500);
+    expect(rows[0].monthlyPrice).toBe(291.67);
+    expect(rows[0].priceUsd).toBe(291.67);
+    expect(rows[0].localPrice).toBe(1093.76);
   });
 
   it('refuses to invent a price for a school in a currency with no rate', async () => {
@@ -262,7 +265,7 @@ describe('PlatformFinancialsService.subscriptions', () => {
     expect(rows[0].currencyConfigured).toBe(false);
     expect(rows[0].localPrice).toBeNull();
     // The USD list price is still known.
-    expect(rows[0].priceUsd).toBe(3500);
+    expect(rows[0].priceUsd).toBe(291.67);
   });
 
   it('marks a subscription PARTIAL when part of it is paid and PAID when it is covered', async () => {
@@ -323,7 +326,7 @@ describe('PlatformFinancialsService.subscriptions', () => {
             payments: [
               {
                 id: 'p1',
-                amount: 13125,
+                amount: 1093.76,
                 currency: 'SAR',
                 type: 'CASH_DEPOSIT',
               },
@@ -453,6 +456,83 @@ describe('PlatformFinancialsService.recordPayment', () => {
         actor,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('PlatformFinancialsService.issueReceipt', () => {
+  const licence = {
+    id: 'lic-1',
+    startedAt: new Date('2026-01-01'),
+    expiresAt: new Date('2027-12-31'),
+    yearlyPrice: 800,
+    plan: { price: 800, durationDays: 365, currency: 'USD' },
+  };
+
+  it('prices the receipt from the term the school bought', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: 'tenant-1',
+      name: 'Riyadh International School',
+      licenses: [licence],
+    });
+
+    await service.issueReceipt({ tenantId: 'tenant-1' }, actor);
+
+    // Two years at 800 a year is 1,600 due.
+    expect(prisma.platformInvoice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-1',
+          licenseId: 'lic-1',
+          amount: 1600,
+          currency: 'USD',
+          status: 'PAID',
+        }),
+      }),
+    );
+  });
+
+  it('prices a quoted licence at the rate it carries', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: 'tenant-1',
+      name: 'Riyadh International School',
+      licenses: [
+        {
+          ...licence,
+          yearlyPrice: 950,
+          plan: { price: 0, durationDays: 365, currency: 'USD' },
+        },
+      ],
+    });
+
+    await service.issueReceipt({ tenantId: 'tenant-1' }, actor);
+
+    expect(prisma.platformInvoice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 1900 }),
+      }),
+    );
+  });
+
+  it('records a part payment when the caller states the amount', async () => {
+    const { service, prisma } = build();
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: 'tenant-1',
+      name: 'Riyadh International School',
+      licenses: [licence],
+    });
+
+    await service.issueReceipt(
+      { tenantId: 'tenant-1', amount: 400, currency: 'SAR' },
+      actor,
+    );
+
+    expect(prisma.platformInvoice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 400, currency: 'SAR' }),
+      }),
+    );
   });
 });
 

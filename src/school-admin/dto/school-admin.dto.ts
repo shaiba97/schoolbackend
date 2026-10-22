@@ -4,11 +4,14 @@ import { Type } from 'class-transformer';
 import {
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Length,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -114,6 +117,17 @@ export class RequestTierChangeDto {
   @ApiProperty()
   @IsUUID()
   planId!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'How many years the school asks for. A year is the shortest subscription.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  years?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

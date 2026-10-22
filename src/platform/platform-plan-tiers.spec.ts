@@ -23,19 +23,26 @@ describe('PLAN_TIERS', () => {
     ]);
   });
 
-  it('prices the tiers as agreed, with Advanced quoted as a range', () => {
+  it('prices the tiers as flat yearly amounts', () => {
     const primary = planTierByCode('PRIMARY');
     const intermediate = planTierByCode('INTERMEDIATE');
     const advanced = planTierByCode('ADVANCED');
     const custom = planTierByCode('CUSTOM');
 
+    // The stored price is the yearly amount the school pays. The console
+    // shows the monthly equivalent beside it.
     expect(primary?.price).toBe(800);
     expect(intermediate?.price).toBe(1200);
-    expect(advanced?.price).toBe(3500);
-    expect(advanced?.priceMax).toBe(5500);
-    // Custom is quote-based: no list price, no ceiling.
+    expect(advanced?.price).toBe(3600);
+    // Custom is quote-based: the rate is carried by the licence that quotes
+    // it, not by the tier.
     expect(custom?.price).toBe(0);
-    expect(custom?.priceMax).toBeNull();
+  });
+
+  it('runs every tier for a year', () => {
+    for (const tier of PLAN_TIERS) {
+      expect(tier.durationDays).toBe(365);
+    }
   });
 
   it('grants each tier the portals it promises', () => {

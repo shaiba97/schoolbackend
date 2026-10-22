@@ -8,9 +8,8 @@ export type PlanTierDefinition = {
   /** Audience line shown on the tier card. */
   target: string;
   billingModel: BillingModel;
+  /** The flat yearly price in USD. The monthly figure is derived from it. */
   price: number;
-  /** Upper bound when the tier is quoted as a range; null for a flat price. */
-  priceMax: number | null;
   currency: string;
   /** Default license term in days. */
   durationDays: number;
@@ -55,9 +54,10 @@ const ALL_PORTALS: PortalModule[] = [
 ];
 
 /**
- * The platform tier catalogue. Prices are the school's monthly amount in
- * USD; a tier with a range carries the entry price in `price` and the
- * ceiling in `priceMax`. This is business data rather than schema, so it
+ * The platform tier catalogue. A tier carries one flat **yearly** price in
+ * USD; the console shows the monthly equivalent beside it. A tier with no
+ * price is priced on request, and the agreed yearly rate is carried by the
+ * licence that quotes it. This is business data rather than schema, so it
  * ships here and is applied by scripts/seed-platform-plans.ts.
  */
 export const PLAN_TIERS: PlanTierDefinition[] = [
@@ -68,7 +68,6 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
     target: 'Small schools and early-stage academies.',
     billingModel: BillingModel.ANNUAL,
     price: 800,
-    priceMax: null,
     currency: 'USD',
     durationDays: 365,
     sortOrder: 1,
@@ -92,7 +91,6 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
     target: 'Mid-size schools.',
     billingModel: BillingModel.ANNUAL,
     price: 1200,
-    priceMax: null,
     currency: 'USD',
     durationDays: 365,
     sortOrder: 2,
@@ -119,8 +117,7 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
     tier: PlanTier.ADVANCED,
     target: 'Large established private and GCC schools.',
     billingModel: BillingModel.ANNUAL,
-    price: 3500,
-    priceMax: 5500,
+    price: 3600,
     currency: 'USD',
     durationDays: 365,
     sortOrder: 3,
@@ -156,7 +153,6 @@ export const PLAN_TIERS: PlanTierDefinition[] = [
     billingModel: BillingModel.ANNUAL,
     // Quote-based: no list price. The agreed rate is carried by the licence.
     price: 0,
-    priceMax: null,
     currency: 'USD',
     durationDays: 365,
     sortOrder: 4,

@@ -176,14 +176,26 @@ describe('PlatformProvisioningService.provision', () => {
     expect(Object.keys(result.featureFlags)).toHaveLength(5);
   });
 
-  it('prices the subscription per student per month', async () => {
+  it('prices the subscription yearly and shows the monthly equivalent', async () => {
     const { service } = build();
 
     const result = await service.provision(validInput, actor);
 
-    // The tier price is the school's monthly amount.
-    expect(result.license?.monthlyUsd).toBe(800);
+    // The tier price is the yearly amount: 800 a year is 66.67 a month.
+    expect(result.license?.yearlyUsd).toBe(800);
+    expect(result.license?.monthlyUsd).toBe(66.67);
+    expect(result.license?.termTotalUsd).toBe(800);
+    expect(result.license?.years).toBe(1);
     expect(result.license?.studentCount).toBe(400);
+  });
+
+  it('runs the first term for the years asked for', async () => {
+    const { service } = build();
+
+    const result = await service.provision({ ...validInput, years: 3 }, actor);
+
+    expect(result.license?.years).toBe(3);
+    expect(result.license?.termTotalUsd).toBe(2400);
   });
 
   it('records the licensed student count on the license', async () => {

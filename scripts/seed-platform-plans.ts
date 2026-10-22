@@ -32,7 +32,6 @@ async function main() {
       target: tier.target,
       billingModel: tier.billingModel,
       price: tier.price,
-      priceMax: tier.priceMax,
       currency: tier.currency,
       durationDays: tier.durationDays,
       sortOrder: tier.sortOrder,

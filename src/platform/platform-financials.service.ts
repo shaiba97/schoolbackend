@@ -4,6 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  monthlyEquivalent,
+  termTotal,
+  termYears,
+} from './platform-pricing';
 import type { PlatformActor } from './platform-tenants.service';
 
 export type { PlatformActor } from './platform-tenants.service';
@@ -195,9 +200,9 @@ export class PlatformFinancialsService {
               startedAt: true,
               expiresAt: true,
               seats: true,
-              monthlyPrice: true,
+              yearlyPrice: true,
               plan: {
-                select: { code: true, name: true, price: true, currency: true },
+                select: { code: true, name: true, price: true, currency: true, durationDays: true },
               },
               payments: {
                 select: {
@@ -220,23 +225,30 @@ export class PlatformFinancialsService {
     return tenants.map((tenant) => {
       const license = tenant.licenses[0] ?? null;
       const plan = license?.plan ?? null;
-      // A tier price is the school's monthly amount. A licence may carry its
-      // own rate, which is how a quoted tier bills.
+      // The yearly rate the licence bills: its own rate when it quotes one,
+      // otherwise the tier's price. The monthly equivalent is derived from it.
       const studentCount = license?.seats ?? 0;
-      const monthlyPrice =
-        license?.monthlyPrice !== null && license?.monthlyPrice !== undefined
-          ? Number(license.monthlyPrice)
+      const yearlyPrice =
+        license?.yearlyPrice !== null && license?.yearlyPrice !== undefined
+          ? Number(license.yearlyPrice)
           : plan
             ? Number(plan.price)
             : 0;
-      const priceUsd = monthlyPrice;
+      const monthlyPrice = monthlyEquivalent(yearlyPrice);
+      const years = termYears(
+        license?.startedAt,
+        license?.expiresAt,
+        plan?.durationDays ?? 365,
+      );
       const currency = tenant.currencyCode || 'USD';
       const rate = rateOf(currency);
       // Without a rate the local price cannot be computed. Showing the USD
       // price as if it were the local price would invoice the wrong amount,
       // so the row is reported as unpriced instead.
       const currencyConfigured = rate !== null;
-      const localPrice = rate === null ? null : priceUsd * rate;
+      // The local price is rounded once, so a payment of exactly the rounded
+      // amount covers the subscription rather than falling a cent short.
+      const localPrice = rate === null ? null : round2(monthlyPrice * rate);
 
       const paidAmount = (license?.payments ?? []).reduce(
         (sum, payment) => sum + Number(payment.amount),
@@ -265,13 +277,17 @@ export class PlatformFinancialsService {
         tierName: plan?.name ?? null,
         licenseId: license?.id ?? null,
         studentCount,
+        yearlyPrice,
         monthlyPrice,
+        termYears: years,
+        termTotal: termTotal(yearlyPrice, years ?? 0),
         startedAt: license?.startedAt ?? null,
         expiresAt: license?.expiresAt ?? null,
         currency,
         currencyConfigured,
-        localPrice: localPrice === null ? null : round2(localPrice),
-        priceUsd: round2(priceUsd),
+        localPrice,
+        // The monthly amount in USD, and the yearly rate it came from.
+        priceUsd: round2(monthlyPrice),
         rateToUsd: rate,
         paidAmount: round2(paidAmount),
         outstanding:
@@ -512,13 +528,18 @@ export class PlatformFinancialsService {
   /**
    * Issues the billing document for money already received. The invoice is a
    * receipt: it never adds to revenue, which is counted from payments.
+   *
+   * The amount is priced by the server from the licence: what the school
+   * owes for the term it bought (the yearly rate times the years). A caller
+   * may pass an amount for a part payment, but it can never make the
+   * document say less than the term is worth by accident.
    */
   async issueReceipt(
     input: {
       tenantId: string;
       licenseId?: string;
-      amount: number;
-      currency: string;
+      amount?: number;
+      currency?: string;
     },
     actor: PlatformActor,
   ) {
@@ -527,21 +548,52 @@ export class PlatformFinancialsService {
       select: {
         id: true,
         name: true,
-        licenses: { select: { id: true }, take: 1 },
+        licenses: {
+          where: input.licenseId ? { id: input.licenseId } : undefined,
+          orderBy: { startedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            startedAt: true,
+            expiresAt: true,
+            yearlyPrice: true,
+            plan: { select: { price: true, durationDays: true, currency: true } },
+          },
+        },
       },
     });
     if (!tenant) throw new NotFoundException('School not found');
+
+    const license = tenant.licenses[0] ?? null;
+    const yearlyPrice = license
+      ? license.yearlyPrice !== null && license.yearlyPrice !== undefined
+        ? Number(license.yearlyPrice)
+        : Number(license.plan.price)
+      : 0;
+    const years = termYears(
+      license?.startedAt,
+      license?.expiresAt,
+      license?.plan.durationDays ?? 365,
+    );
+    const amount = input.amount ?? termTotal(yearlyPrice, years ?? 0);
+    const currency = (
+      input.currency ??
+      license?.plan.currency ??
+      'USD'
+    )
+      .trim()
+      .toUpperCase();
 
     const number = await this.nextInvoiceNumber();
     const invoice = await this.prisma.platformInvoice.create({
       data: {
         tenantId: tenant.id,
-        licenseId: input.licenseId ?? tenant.licenses[0]?.id ?? null,
+        licenseId: license?.id ?? null,
         number,
         kind: 'LICENSE',
         status: 'PAID',
-        amount: input.amount,
-        currency: input.currency.trim().toUpperCase(),
+        amount,
+        currency,
         issuedAt: new Date(),
         paidAt: new Date(),
         recordedById: actor.id,

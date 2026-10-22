@@ -2936,6 +2936,8 @@ model PlatformPlan {
   billingModel BillingModel @map("billing_model")
   region       String?      @db.VarChar(40)
 
+  // The yearly price a school pays for this tier. The console shows the
+  // monthly equivalent, which is calculated from this number.
   price    Decimal @default(0) @db.Decimal(12, 2)
   currency String  @default("USD") @db.Char(3)
   isActive Boolean @default(true) @map("is_active")
@@ -2951,15 +2953,12 @@ model PlatformPlan {
   // request path does not gate on module rows yet.
   includedModules PortalModule[] @default([]) @map("included_modules")
 
-  // Feature flags and limits the tier grants, e.g.
+  // Features and limits the tier grants, e.g.
   // { "whatsappAttendance": true, "maxStudents": 500, "slaHours": 8 }.
   features Json @default("{}")
 
-  // Upper bound of the tier price when it is quoted as a range.
-  priceMax Decimal? @map("price_max") @db.Decimal(12, 2)
-
-  // Default license term in days; used when a subscription is renewed
-  // without an explicit end date.
+  // The base term in days. A licence runs for one, two, three... of these,
+  // so the shortest subscription is a year.
   durationDays Int @default(365) @map("duration_days")
 
   // Card order in the console.
@@ -2986,10 +2985,10 @@ model TenantLicense {
   expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
   seats     Int?
 
-  // The monthly amount this licence bills. It overrides the tier's list
-  // price, which is what a quoted tier needs: the tier says "price on
-  // request" and the licence carries the agreed rate.
-  monthlyPrice Decimal? @map("monthly_price") @db.Decimal(12, 2)
+  // The yearly amount this licence bills. It overrides the tier's price,
+  // which is what a quoted tier needs: the tier says "price on request" and
+  // the licence carries the agreed yearly rate.
+  yearlyPrice Decimal? @map("yearly_price") @db.Decimal(12, 2)
 
   notes String? @db.VarChar(400)
 

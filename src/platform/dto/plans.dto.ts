@@ -53,18 +53,11 @@ export class CreateTierDto {
   @IsEnum(['ANNUAL'])
   billingModel!: 'ANNUAL';
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The flat yearly price the school pays' })
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   price!: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  priceMax?: number | null;
 
   @ApiProperty({ example: 'USD' })
   @IsString()
@@ -104,19 +97,12 @@ export class UpdateTierDto {
   @MaxLength(200)
   target?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'The flat yearly price the school pays' })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   price?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  priceMax?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -163,7 +149,17 @@ export class RenewSubscriptionDto {
 
   @ApiPropertyOptional({
     description:
-      'Students the licence covers after the renewal. The tier price is per student per month, so this sets the monthly amount.',
+      'How many years the renewed term runs for. A year is the shortest subscription.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  years?: number;
+
+  @ApiPropertyOptional({
+    description: 'How many students the licence covers after the renewal.',
   })
   @IsOptional()
   @Type(() => Number)
@@ -173,13 +169,13 @@ export class RenewSubscriptionDto {
 
   @ApiPropertyOptional({
     description:
-      'Price per student per month for this licence. Overrides the tier price, which is what a quoted tier needs.',
+      'The yearly rate this licence bills. Overrides the tier price, which is what a quoted tier needs.',
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  monthlyPrice?: number;
+  yearlyPrice?: number;
 }
 
 export class UpgradeSubscriptionDto {
@@ -195,11 +191,22 @@ export class UpgradeSubscriptionDto {
 
   @ApiPropertyOptional({
     description:
-      'Price per student per month for this licence. Overrides the tier price, which is what a quoted tier needs.',
+      'How many years the new term runs for. A year is the shortest subscription.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  years?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'The yearly rate this licence bills. Overrides the tier price, which is what a quoted tier needs.',
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  monthlyPrice?: number;
+  yearlyPrice?: number;
 }

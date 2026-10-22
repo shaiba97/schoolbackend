@@ -37,7 +37,7 @@ async function main() {
     if (seen.has(licence.tenantId)) continue;
     seen.add(licence.tenantId);
 
-    const rate = Number(licence.monthlyPrice ?? licence.plan.price);
+    const rate = Number(licence.yearlyPrice ?? licence.plan.price);
     const students = licence.seats ?? 0;
     const portals = licence.tenant.modules.filter((m) => m.enabled).length;
     monthlyTotal += rate;

@@ -6,6 +6,13 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PlatformActor } from './platform-tenants.service';
+import {
+  MAXIMUM_TERM_YEARS,
+  MINIMUM_TERM_YEARS,
+  monthlyEquivalent,
+  termTotal,
+  termYears,
+} from './platform-pricing';
 
 export type PlanActor = PlatformActor;
 
@@ -15,8 +22,8 @@ export type TierInput = {
   tier: 'PRIMARY' | 'INTERMEDIATE' | 'ADVANCED' | 'CUSTOM';
   target?: string;
   billingModel: 'ANNUAL';
+  /** The flat yearly price the school pays. */
   price: number;
-  priceMax?: number | null;
   currency: string;
   durationDays: number;
   includedModules?: string[];
@@ -27,7 +34,6 @@ export type TierUpdate = {
   name?: string;
   target?: string | null;
   price?: number;
-  priceMax?: number | null;
   currency?: string;
   durationDays?: number;
   includedModules?: string[];
@@ -79,7 +85,6 @@ export class PlatformPlansService {
         target: input.target?.trim() || null,
         billingModel: input.billingModel,
         price: input.price,
-        priceMax: input.priceMax ?? null,
         currency: input.currency.trim().toUpperCase(),
         durationDays: input.durationDays,
         includedModules: (input.includedModules ?? []) as never,
@@ -117,7 +122,6 @@ export class PlatformPlansService {
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.target !== undefined) data.target = input.target?.trim() || null;
     if (input.price !== undefined) data.price = input.price;
-    if (input.priceMax !== undefined) data.priceMax = input.priceMax;
     if (input.currency !== undefined) data.currency = input.currency.trim().toUpperCase();
     if (input.durationDays !== undefined) data.durationDays = input.durationDays;
     if (input.includedModules !== undefined) {
@@ -213,7 +217,7 @@ export class PlatformPlansService {
             expiresAt: true,
             terminatedAt: true,
             seats: true,
-            monthlyPrice: true,
+            yearlyPrice: true,
             plan: {
               select: {
                 id: true,
@@ -260,6 +264,19 @@ export class PlatformPlansService {
 
       const locked = Boolean(tenant.lockedAt) || Boolean(license?.terminatedAt);
 
+      // The yearly rate the licence bills: its own rate when it quotes one,
+      // otherwise the tier's price.
+      const yearlyPrice = plan
+        ? license?.yearlyPrice !== null && license?.yearlyPrice !== undefined
+          ? Number(license.yearlyPrice)
+          : Number(plan.price)
+        : 0;
+      const years = termYears(
+        license?.startedAt,
+        license?.expiresAt,
+        plan?.durationDays ?? 365,
+      );
+
       return {
         tenantId: tenant.id,
         name: tenant.name,
@@ -272,22 +289,15 @@ export class PlatformPlansService {
         tier: plan?.code ?? null,
         tierName: plan?.name ?? null,
         tierLabel: plan?.tier ?? null,
-        // A tier price is the school's monthly amount. A licence may carry
-        // its own rate, which is how a quoted tier bills.
-        price: plan
-          ? license?.monthlyPrice !== null && license?.monthlyPrice !== undefined
-            ? Number(license.monthlyPrice)
-            : Number(plan.price)
-          : null,
+        yearlyPrice,
+        /** The monthly equivalent of the yearly rate, and the yearly rate
+         * itself - a subscription is bought for a term and paid yearly. */
+        monthlyPrice: monthlyEquivalent(yearlyPrice),
+        termYears: years,
+        termTotal: termTotal(yearlyPrice, years ?? 0),
         currency: plan?.currency ?? 'USD',
         studentCount: license?.seats ?? 0,
-        monthlyUsd: plan
-          ? round2(
-              license?.monthlyPrice !== null && license?.monthlyPrice !== undefined
-                ? Number(license.monthlyPrice)
-                : Number(plan.price),
-            )
-          : 0,
+        monthlyUsd: monthlyEquivalent(yearlyPrice),
         startedAt: license?.startedAt ?? null,
         expiresAt,
         daysRemaining,
@@ -305,7 +315,8 @@ export class PlatformPlansService {
       expiresAt?: Date;
       licenseId?: string;
       studentCount?: number;
-      monthlyPrice?: number;
+      yearlyPrice?: number;
+      years?: number;
     },
     actor: PlatformActor,
   ) {
@@ -313,9 +324,18 @@ export class PlatformPlansService {
     const license = tenant.licenses[0];
     if (!license) throw new NotFoundException('This school has no licence to renew');
 
+    const years = this.assertTerm(input.years);
     const termDays = license.plan.durationDays || 365;
     const expiresAt =
-      input.expiresAt ?? new Date(Date.now() + termDays * 24 * 60 * 60 * 1000);
+      input.expiresAt ?? new Date(Date.now() + termDays * years * 24 * 60 * 60 * 1000);
+
+    // The yearly rate the renewed term bills: a new quote, or the rate the
+    // licence already carried.
+    const yearlyPrice =
+      input.yearlyPrice ??
+      (license.yearlyPrice !== null && license.yearlyPrice !== undefined
+        ? Number(license.yearlyPrice)
+        : Number(license.plan.price));
 
     const updated = await this.prisma.tenantLicense.update({
       where: { id: license.id },
@@ -324,14 +344,11 @@ export class PlatformPlansService {
         expiresAt,
         terminatedAt: null,
         terminationReason: null,
-        // The licensed student count sets the monthly amount, so a renewal
-        // may carry a new one.
+        // The licensed student count says how big the school is.
         ...(input.studentCount !== undefined
           ? { seats: input.studentCount > 0 ? input.studentCount : null }
           : {}),
-        ...(input.monthlyPrice !== undefined
-          ? { monthlyPrice: input.monthlyPrice }
-          : {}),
+        yearlyPrice,
       },
     });
 
@@ -351,7 +368,7 @@ export class PlatformPlansService {
       entityId: license.id,
       tenantId: tenant.id,
       oldValues: { status: license.status, expiresAt: license.expiresAt },
-      newValues: { status: 'ACTIVE', expiresAt },
+      newValues: { status: 'ACTIVE', expiresAt, years, yearlyPrice },
     });
 
     return {
@@ -360,7 +377,31 @@ export class PlatformPlansService {
       status: 'ACTIVE' as const,
       expiresAt: updated.expiresAt,
       unlocked: unlock,
+      years,
+      yearlyPrice,
+      monthlyPrice: monthlyEquivalent(yearlyPrice),
+      termTotal: termTotal(yearlyPrice, years),
     };
+  }
+
+  /**
+   * A term is a whole number of years, and the shortest one is a year.
+   * The rule lives here, not in the console, so a request for a shorter
+   * term is refused whoever makes it.
+   */
+  private assertTerm(years: number | undefined): number {
+    const value = years ?? MINIMUM_TERM_YEARS;
+    if (!Number.isInteger(value) || value < MINIMUM_TERM_YEARS) {
+      throw new BadRequestException(
+        'The minimum subscription is one year.',
+      );
+    }
+    if (value > MAXIMUM_TERM_YEARS) {
+      throw new BadRequestException(
+        `A single term may not run longer than ${MAXIMUM_TERM_YEARS} years.`,
+      );
+    }
+    return value;
   }
 
   async terminate(tenantId: string, actor: PlatformActor) {
@@ -402,7 +443,12 @@ export class PlatformPlansService {
 
   async upgrade(
     tenantId: string,
-    input: { planId: string; expiresAt?: Date; monthlyPrice?: number },
+    input: {
+      planId: string;
+      expiresAt?: Date;
+      yearlyPrice?: number;
+      years?: number;
+    },
     actor: PlatformActor,
   ) {
     const plan = await this.prisma.platformPlan.findUnique({
@@ -410,6 +456,7 @@ export class PlatformPlansService {
     });
     if (!plan) throw new NotFoundException('Plan not found');
 
+    const years = this.assertTerm(input.years);
     const tenant = await this.tenantWithLicenses(tenantId);
     const license = tenant.licenses[0];
 
@@ -422,7 +469,10 @@ export class PlatformPlansService {
           startedAt: new Date(),
           expiresAt:
             input.expiresAt ??
-            new Date(Date.now() + (plan.durationDays || 365) * 24 * 60 * 60 * 1000),
+            new Date(
+              Date.now() + (plan.durationDays || 365) * years * 24 * 60 * 60 * 1000,
+            ),
+          yearlyPrice: input.yearlyPrice ?? Number(plan.price),
         },
       });
 
@@ -431,12 +481,21 @@ export class PlatformPlansService {
         entityType: 'tenant_license',
         entityId: created.id,
         tenantId: tenant.id,
-        newValues: { planCode: plan.code, planId: plan.id },
+        newValues: { planCode: plan.code, planId: plan.id, years },
       });
 
       await this.syncPortals(tenant.id, plan.includedModules);
 
-      return { licenseId: created.id, tenantId: tenant.id, tier: plan.code };
+      return {
+        licenseId: created.id,
+        tenantId: tenant.id,
+        tier: plan.code,
+        years,
+        yearlyPrice: input.yearlyPrice ?? Number(plan.price),
+        monthlyPrice: monthlyEquivalent(input.yearlyPrice ?? Number(plan.price)),
+        termTotal: termTotal(input.yearlyPrice ?? Number(plan.price), years),
+        expiresAt: created.expiresAt,
+      };
     }
 
     // Moving to a tier starts that tier's term. A licence that came from the
@@ -444,18 +503,23 @@ export class PlatformPlansService {
     // a yearly tier and never end.
     const termEndsAt =
       input.expiresAt ??
-      new Date(Date.now() + (plan.durationDays || 365) * 24 * 60 * 60 * 1000);
+      new Date(
+        Date.now() + (plan.durationDays || 365) * years * 24 * 60 * 60 * 1000,
+      );
+    const yearlyPrice =
+      input.yearlyPrice ??
+      (license.yearlyPrice !== null && license.yearlyPrice !== undefined
+        ? Number(license.yearlyPrice)
+        : Number(plan.price));
 
     await this.prisma.tenantLicense.update({
       where: { id: license.id },
       data: {
         planId: plan.id,
         expiresAt: termEndsAt,
-        // A quoted tier has no list price, so the agreed rate is carried by
-        // the licence.
-        ...(input.monthlyPrice !== undefined
-          ? { monthlyPrice: input.monthlyPrice }
-          : {}),
+        // A quoted tier has no list price, so the agreed yearly rate is
+        // carried by the licence.
+        yearlyPrice,
       },
     });
 
@@ -480,10 +544,21 @@ export class PlatformPlansService {
         planCode: plan.code,
         planId: plan.id,
         expiresAt: termEndsAt,
+        years,
+        yearlyPrice,
       },
     });
 
-    return { licenseId: license.id, tenantId: tenant.id, tier: plan.code };
+    return {
+      licenseId: license.id,
+      tenantId: tenant.id,
+      tier: plan.code,
+      years,
+      yearlyPrice,
+      monthlyPrice: monthlyEquivalent(yearlyPrice),
+      termTotal: termTotal(yearlyPrice, years),
+      expiresAt: termEndsAt,
+    };
   }
 
   /**
@@ -537,8 +612,15 @@ export class PlatformPlansService {
             startedAt: true,
             expiresAt: true,
             terminatedAt: true,
+            yearlyPrice: true,
             plan: {
-              select: { id: true, code: true, name: true, durationDays: true },
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                price: true,
+                durationDays: true,
+              },
             },
           },
         },
@@ -580,7 +662,6 @@ export class PlatformPlansService {
     target: string | null;
     billingModel: string;
     price: unknown;
-    priceMax: unknown;
     currency: string;
     durationDays: number;
     sortOrder: number;
@@ -596,7 +677,9 @@ export class PlatformPlansService {
       target: plan.target,
       billingModel: plan.billingModel,
       price: Number(plan.price),
-      priceMax: plan.priceMax === null || plan.priceMax === undefined ? null : Number(plan.priceMax),
+      // The yearly price a school pays, and the monthly equivalent the
+      // console shows beside it.
+      monthlyPrice: monthlyEquivalent(Number(plan.price)),
       currency: plan.currency,
       durationDays: plan.durationDays,
       sortOrder: plan.sortOrder,

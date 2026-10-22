@@ -6,6 +6,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -83,7 +84,18 @@ export class ProvisionTenantDto {
 
   @ApiPropertyOptional({
     description:
-      'Students the licence covers. The plan price is per student per month, so this number sets the monthly amount.',
+      'How many years the first term runs for. A year is the shortest subscription.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  years?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Students the licence covers. It is recorded against the licence for the school’s size.',
   })
   @IsOptional()
   @Type(() => Number)

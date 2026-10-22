@@ -42,7 +42,7 @@ async function main() {
     const students = Math.max(licence.tenant._count.students, MINIMUM_STUDENTS);
     const hasTerm = Boolean(licence.expiresAt);
     const hasStudents = Boolean(licence.seats);
-    const hasRate = licence.monthlyPrice !== null;
+    const hasRate = licence.yearlyPrice !== null;
 
     if (hasTerm && hasStudents && hasRate) {
       skipped += 1;
@@ -54,7 +54,7 @@ async function main() {
     const data = {
       expiresAt,
       seats: licence.seats ?? students,
-      monthlyPrice: licence.monthlyPrice ?? licence.plan.price,
+      monthlyPrice: licence.yearlyPrice ?? licence.plan.price,
       status: 'ACTIVE' as const,
       terminatedAt: null,
       terminationReason: null,
@@ -99,7 +99,7 @@ async function main() {
           oldValues: {
             expiresAt: licence.expiresAt,
             seats: licence.seats,
-            monthlyPrice: licence.monthlyPrice,
+            monthlyPrice: licence.yearlyPrice,
           },
           newValues: {
             expiresAt: data.expiresAt,

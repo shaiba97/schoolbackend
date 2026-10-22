@@ -60,7 +60,7 @@ function build(overrides: Record<string, unknown> = {}) {
         startedAt: new Date('2026-01-01'),
         expiresAt: new Date(Date.now() + 200 * 24 * 60 * 60 * 1000),
         seats: 400,
-        monthlyPrice: 800,
+        yearlyPrice: 800,
         terminatedAt: null,
         terminationReason: null,
         plan: {
@@ -134,7 +134,9 @@ describe('SchoolAdminService.overview', () => {
       status: 'ACTIVE',
       subscriptionStatus: 'ACTIVE',
       studentCount: 400,
-      monthlyPrice: 800,
+      // 800 a year is 66.67 a month.
+      yearlyPrice: 800,
+      monthlyPrice: 66.67,
     });
   });
 

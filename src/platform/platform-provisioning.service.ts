@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PlatformActor } from './platform-tenants.service';
 import { marketDefaults } from './platform-markets';
+import { monthlyEquivalent, termTotal } from './platform-pricing';
 
 export type ProvisionTenantInput = {
   name: string;
@@ -22,6 +23,7 @@ export type ProvisionTenantInput = {
   adminPhone?: string;
   adminPassword: string;
   planCode?: string;
+  years?: number;
   studentCount?: number;
 };
 
@@ -55,8 +57,8 @@ const ALL_MODULES: PortalModule[] = [
  *
  * - The market decides the currency and the timezone.
  * - The slug is derived from the school name, so nobody has to invent one.
- * - The price is per student per month. The licensed student count is what
- *   turns the tier price into a monthly amount.
+ * - The tier price is the yearly amount. The term runs for whole years, and
+ *   the monthly figure the console shows is derived from the yearly one.
  */
 @Injectable()
 export class PlatformProvisioningService {
@@ -75,6 +77,7 @@ export class PlatformProvisioningService {
     const [adminFirstName, ...adminRest] = input.adminName.trim().split(' ');
     const adminLastName = adminRest.join(' ') || undefined;
     const studentCount = input.studentCount ?? 0;
+    const years = input.years ?? 1;
     const { currency, timezone } = marketDefaults(input.countryCode);
 
     // Hashing before the transaction keeps the pooled connection free while
@@ -175,9 +178,12 @@ export class PlatformProvisioningService {
               status: 'ACTIVE',
               startedAt: new Date(),
               expiresAt: new Date(
-                Date.now() + (plan.durationDays || 365) * 24 * 60 * 60 * 1000,
+                Date.now() + years * 365 * 24 * 60 * 60 * 1000,
               ),
               seats: studentCount > 0 ? studentCount : null,
+              // The licence carries the yearly rate so a quoted tier can bill
+              // its own price.
+              yearlyPrice: Number(plan.price),
             },
           })
         : null;
@@ -185,8 +191,11 @@ export class PlatformProvisioningService {
       return { tenant, user, license, plan, slug };
     });
 
-    // The tier price is the school's monthly amount.
-    const monthlyUsd = plan ? Number(plan.price) : 0;
+    // The tier price is the yearly amount; the monthly figure beside it is
+    // what the school pays spread over the year.
+    const yearlyUsd = plan ? Number(plan.price) : 0;
+    const monthlyUsd = monthlyEquivalent(yearlyUsd);
+    const termTotalUsd = termTotal(yearlyUsd, years);
 
     await this.prisma.platformAuditLog.create({
       data: {
@@ -204,7 +213,10 @@ export class PlatformProvisioningService {
           staffNumber: created.user.staffNumber,
           planCode: created.plan?.code ?? null,
           studentCount,
+          years,
+          yearlyUsd,
           monthlyUsd,
+          termTotalUsd,
         },
         ipAddress: actor.ip,
         userAgent: actor.userAgent?.slice(0, 255),
@@ -235,7 +247,10 @@ export class PlatformProvisioningService {
             id: created.license.id,
             planCode: created.plan?.code ?? null,
             studentCount: created.license.seats ?? 0,
+            years,
+            yearlyUsd,
             monthlyUsd,
+            termTotalUsd,
           }
         : null,
       modules: ALL_MODULES,

@@ -74,16 +74,21 @@ export class IssueReceiptDto {
   @IsUUID()
   licenseId?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description:
+      'The amount on the document. Left out, the server prices the receipt from the term the school bought.',
+  })
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  @Min(0.01)
-  amount!: number;
+  @Min(0)
+  amount?: number;
 
-  @ApiProperty({ example: 'SAR' })
+  @ApiPropertyOptional({ description: 'Defaults to the tier currency' })
+  @IsOptional()
   @IsString()
   @Length(3, 3)
-  currency!: string;
+  currency?: string;
 }
 
 export class ListPaymentsQueryDto {
