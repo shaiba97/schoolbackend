@@ -29,6 +29,9 @@ function txBase(over: any = {}) {
         where.slug?.startsWith?.('CUSTOM_') ? null : { id: `r-${where.slug}`, slug: where.slug, name: where.slug },
       ),
       create: jest.fn(async ({ data }: any) => ({ id: `r-${data.slug}`, ...data })),
+      // A role that predates the portal column learns it from the first
+      // staff member placed in it.
+      update: jest.fn(async ({ data }: any) => ({ id: 'r-1', ...data })),
     },
     membershipRole: {
       create: jest.fn(async ({ data }: any) => data),
@@ -44,6 +47,9 @@ function prismaWith(tx: any) {
     $transaction: async (cb: any) => cb(tx),
     withTenantRead: async (_tenantId: string, cb: any) => cb(tx),
     user: tx.user,
+    // No licence means no tier restriction: the school keeps the positions
+    // it always had. A school with a licence gets the gate tested below.
+    tenantLicense: tx.tenantLicense ?? { findFirst: async () => null },
   } as any;
 }
 
@@ -295,5 +301,41 @@ describe('getProfile', () => {
       user: { findFirst: jest.fn(async () => coordinatorRow({ memberships: [] })) } as any,
     });
     await expect(svc(noMembershipTx).getProfile(TENANT, 'u-coord')).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('create: the plan tier gates the positions', () => {
+  const tierGranting = (portals: string[]) => ({
+    tenantLicense: {
+      findFirst: jest.fn(async () => ({ plan: { includedModules: portals } })),
+    },
+  });
+
+  it('refuses a position for a portal the tier does not grant', async () => {
+    const tx = txBase(tierGranting(['ADMIN', 'ACADEMIC', 'TEACHER', 'STUDENT']));
+
+    await expect(
+      svc(tx).create(TENANT, {
+        fullName: 'Sana Transport', phone: '+249966376660',
+        position: 'TRANSPORT_COORDINATOR', password: 'secret123',
+      } as any),
+    ).rejects.toThrow(/does not include the transport portal/);
+
+    expect(tx.user.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a position for a portal the tier grants', async () => {
+    const tx = txBase(tierGranting(['ADMIN', 'ACADEMIC', 'TRANSPORT']));
+
+    await svc(tx).create(TENANT, {
+      fullName: 'Sana Transport', phone: '+249966376660',
+      position: 'TRANSPORT_COORDINATOR', password: 'secret123',
+    } as any);
+
+    expect(tx.user.create).toHaveBeenCalled();
+    // A fixed position reuses the tenant's shared role row, so the portal is
+    // recorded on that row the first time somebody is placed in it.
+    const roleUpdate = tx.role.update.mock.calls[0][0];
+    expect(roleUpdate.data.portal).toBe('TRANSPORT');
   });
 });

@@ -1,3 +1,4 @@
+import { PortalModule } from '@prisma/client';
 import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export const STAFF_POSITIONS = [
@@ -32,6 +33,14 @@ export class CreateStaffDto {
   @IsString()
   @MinLength(8)
   password?: string;
+
+  /**
+   * The portal a CUSTOM position belongs to. The other positions name their
+   * own portal, so this only applies to a custom title.
+   */
+  @IsOptional()
+  @IsIn(Object.values(PortalModule))
+  portal?: PortalModule;
 
   /**
    * Deprecated: legacy callers send a system `role` slug instead of `position`.

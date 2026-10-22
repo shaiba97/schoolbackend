@@ -533,11 +533,17 @@ model Role {
 
   isSystemRole Boolean @default(false) @map("is_system_role")
 
+  // The portal a position belongs to. A school may only hold positions for
+  // the portals its plan tier grants, so the portal has to be recorded to
+  // check it later.
+  portal PortalModule?
+
   tenant      Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   memberships MembershipRole[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
+  @@index([portal])
   @@map("roles")
 }
 

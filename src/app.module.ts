@@ -31,6 +31,7 @@ import { ReceptionistModule } from './receptionist/receptionist.module';
 import { FinanceModule } from './finance/finance.module';
 import { TransportModule } from './transport/transport.module';
 import { PlatformModule } from './platform/platform.module';
+import { SchoolAdminModule } from './school-admin/school-admin.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { PlatformModule } from './platform/platform.module';
     FinanceModule,
     TransportModule,
     PlatformModule,
+    SchoolAdminModule,
   ],
   controllers: [AppController],
   providers: [

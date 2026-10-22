@@ -10,6 +10,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { CreateStaffDto, UpdateStaffDto, UpdateStaffStatusDto, StaffQueryDto, ResetStaffPasswordDto } from './dto/staff.dto';
+import {
+  allowedPositions,
+  portalForPosition,
+  tierPortalsFor,
+} from './position-portals';
 
 /** Role slugs that carry portal login access. */
 export const SYSTEM_POSITION_SLUGS = ['RECEPTIONIST', 'ACADEMIC_ADMIN', 'ACCOUNTANT', 'TRANSPORT_COORDINATOR'] as const;
@@ -359,6 +364,17 @@ export class StaffService {
     const passwordHash = pos.system ? await bcrypt.hash(dto.password!, 10) : null;
     const { firstName, lastName } = this.splitFullName(dto.fullName);
 
+    // A school may only staff the portals its plan tier grants. The gate
+    // lives here, on the server, so a crafted request cannot create a
+    // transport coordinator for a school that did not buy transport.
+    const portal = portalForPosition(pos.key, dto.portal);
+    const tierPortals = await tierPortalsFor(this.prisma, tenantId);
+    if (tierPortals && portal && !tierPortals.includes(portal)) {
+      throw new ForbiddenException(
+        `Your plan does not include the ${portal.toLowerCase()} portal, so this position cannot be created. Upgrade the plan to add it.`,
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.user.findFirst({
         where: { phone: dto.phone },
@@ -391,7 +407,14 @@ export class StaffService {
       });
       if (!role) {
         role = await tx.role.create({
-          data: { tenantId, name: pos.title, slug: pos.slug, scope: 'TENANT' },
+          data: { tenantId, name: pos.title, slug: pos.slug, scope: 'TENANT', portal },
+        });
+      } else if (!role.portal && portal) {
+        // A role created before this column existed, or one shared across
+        // portals, learns its portal from the first staff member placed in it.
+        role = await tx.role.update({
+          where: { id: role.id },
+          data: { portal },
         });
       }
 
