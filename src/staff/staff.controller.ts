@@ -17,7 +17,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/tenant/current-tenant.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { StaffService } from './staff.service';
-import { CreateStaffDto, UpdateStaffDto, UpdateStaffStatusDto, StaffQueryDto, ResetStaffPasswordDto } from './dto/staff.dto';
+import { CreateStaffDto, UpdateStaffDto, UpdateStaffStatusDto, UpdateMeProfileDto, ChangeMyPasswordDto, StaffQueryDto, ResetStaffPasswordDto } from './dto/staff.dto';
 
 @ApiTags('Staff')
 @ApiBearerAuth()
@@ -69,6 +69,33 @@ export class StaffController {
     @CurrentUser('userId') userId: string,
   ) {
     return this.service.getProfile(tenantId, userId);
+  }
+
+  /**
+   * Own-profile write: the coordinator edits their own record. Identity comes
+   * from the JWT, never from input, so no RolesGuard — same boundary as the
+   * socket ticket and own-profile read above.
+   */
+  @Patch('me/profile')
+  updateMyProfile(
+    @CurrentTenant('tenantId') tenantId: string,
+    @CurrentUser('userId') userId: string,
+    @Body() dto: UpdateMeProfileDto,
+  ) {
+    return this.service.updateMyProfile(tenantId, userId, dto);
+  }
+
+  /**
+   * Own-password change: verifies the current password before rotating.
+   * Identity comes from the JWT, so no RolesGuard.
+   */
+  @Patch('me/password')
+  changeMyPassword(
+    @CurrentTenant('tenantId') tenantId: string,
+    @CurrentUser('userId') userId: string,
+    @Body() dto: ChangeMyPasswordDto,
+  ) {
+    return this.service.changeMyPassword(tenantId, userId, dto);
   }
 
   @Get(':id')

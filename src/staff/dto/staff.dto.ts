@@ -1,5 +1,5 @@
 import { PortalModule } from '@prisma/client';
-import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export const STAFF_POSITIONS = [
   'FINANCIAL_AFFAIRS',
@@ -99,4 +99,28 @@ export class StaffQueryDto {
   @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE', 'SUSPENDED'])
   status?: string;
+}
+
+/** Self-service: the staff member edits only their own record. */
+export class UpdateMeProfileDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  phone?: string;
+}
+
+/** Self-service: the staff member changes only their own password. */
+export class ChangeMyPasswordDto {
+  @IsString()
+  currentPassword: string;
+
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
 }

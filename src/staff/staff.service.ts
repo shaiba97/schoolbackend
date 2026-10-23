@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { CreateStaffDto, UpdateStaffDto, UpdateStaffStatusDto, StaffQueryDto, ResetStaffPasswordDto } from './dto/staff.dto';
+import { CreateStaffDto, UpdateStaffDto, UpdateStaffStatusDto, UpdateMeProfileDto, ChangeMyPasswordDto, StaffQueryDto, ResetStaffPasswordDto } from './dto/staff.dto';
 import {
   allowedPositions,
   portalForPosition,
@@ -170,6 +170,100 @@ export class StaffService {
         tenant: membership.tenant,
       };
     });
+  }
+
+  /**
+   * Self-service: the authenticated staff member edits their own record.
+   * Identity comes from the JWT and the lookup is scoped to the caller's
+   * tenant with ACTIVE memberships only — the same boundary as getProfile,
+   * so a coordinator can never reach another staff member's account.
+   */
+  async updateMyProfile(
+    tenantId: string,
+    userId: string,
+    dto: UpdateMeProfileDto,
+  ) {
+    const user = await this.prisma.withTenantRead(tenantId, async (db) => {
+      return db.user.findFirst({
+        where: { id: userId, status: { not: 'DELETED' } },
+        select: {
+          id: true,
+          memberships: { where: { tenantId, status: 'ACTIVE' } },
+        },
+      });
+    });
+
+    if (!user || user.memberships.length === 0) {
+      throw new NotFoundException('Staff profile not found');
+    }
+
+    const data: Record<string, unknown> = {};
+    if (dto.fullName) {
+      const { firstName, lastName } = this.splitFullName(dto.fullName);
+      data.firstName = firstName;
+      data.lastName = lastName;
+    }
+    if (dto.phone !== undefined) {
+      const existing = await this.prisma.user.findFirst({
+        where: { phone: dto.phone, NOT: { id: userId } },
+      });
+      if (existing) {
+        throw new ConflictException('A user with this phone number already exists');
+      }
+      data.phone = dto.phone;
+    }
+
+    if (Object.keys(data).length > 0) {
+      await this.prisma.user.update({ where: { id: userId }, data });
+    }
+
+    return this.getProfile(tenantId, userId);
+  }
+
+  /**
+   * Self-service: the authenticated staff member changes their own password.
+   * Requires and verifies the current password so a stolen session cannot
+   * silently take over the account.
+   */
+  async changeMyPassword(
+    tenantId: string,
+    userId: string,
+    dto: ChangeMyPasswordDto,
+  ) {
+    const user = await this.prisma.withTenantRead(tenantId, async (db) => {
+      return db.user.findFirst({
+        where: { id: userId, status: { not: 'DELETED' } },
+        select: {
+          id: true,
+          passwordHash: true,
+          memberships: { where: { tenantId, status: 'ACTIVE' } },
+        },
+      });
+    });
+
+    if (!user || user.memberships.length === 0) {
+      throw new NotFoundException('Staff profile not found');
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account has no password set; contact an administrator',
+      );
+    }
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) throw new ForbiddenException('Current password is incorrect');
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+    return { changed: true };
   }
 
   /** Matches every staff directory row: system + operational slugs, plus per-staff custom roles. */
@@ -458,6 +552,18 @@ export class StaffService {
 
       if (dto.position || dto.role) {
         const pos = this.resolvePosition(dto);
+        // Same tier gate as create(): moving an existing staff member into a
+        // position for a portal the plan does not grant is just a detour
+        // around position creation, and this path must refuse it too.
+        // UpdateStaffDto carries no portal; CUSTOM resolves to portal-less and
+        // passes, the same as backend allowedPositions treats it.
+        const portal = portalForPosition(pos.key);
+        const tierPortals = await tierPortalsFor(this.prisma, tenantId);
+        if (tierPortals && portal && !tierPortals.includes(portal)) {
+          throw new ForbiddenException(
+            `Your plan does not include the ${portal.toLowerCase()} portal, so this position cannot be assigned. Upgrade the plan to add it.`,
+          );
+        }
         const membership = await tx.tenantMembership.findFirst({
           where: { tenantId, userId: id, status: 'ACTIVE' },
         });
