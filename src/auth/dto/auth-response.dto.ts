@@ -5,6 +5,7 @@ export class UserPayload {
   @ApiProperty() email: string | null;
   @ApiProperty() firstName: string;
   @ApiProperty() lastName: string | null;
+  @ApiProperty({ nullable: true }) phone: string | null;
   @ApiProperty() avatarUrl: string | null;
   @ApiProperty() status: string;
   @ApiProperty() createdAt: Date;
