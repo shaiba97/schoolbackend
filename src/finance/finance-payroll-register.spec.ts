@@ -528,6 +528,7 @@ describe('listMyPayouts', () => {
   it('queries only the callers own payouts', async () => {
     const tx = { salaryPayout: { findMany: jest.fn(async () => []) } };
     await harness(tx).listMyPayouts(TENANT, 'u-me');
-    expect(tx.salaryPayout.findMany.mock.calls[0][0].where).toEqual({ tenantId: TENANT, userId: 'u-me' });
+    const calls = tx.salaryPayout.findMany.mock.calls as unknown as Array<[{ where: unknown }]>;
+    expect(calls[0][0].where).toEqual({ tenantId: TENANT, userId: 'u-me' });
   });
 });

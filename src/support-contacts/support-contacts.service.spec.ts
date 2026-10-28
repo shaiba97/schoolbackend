@@ -75,6 +75,17 @@ describe('SupportContactsService', () => {
     );
   });
 
+  it('lists only active contacts with public fields for the landing page', async () => {
+    const { service, prismaMock } = make();
+    const result = await service.publicActive();
+    expect(prismaMock.supportContact.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      select: { contact: true, contactType: true, region: true },
+      orderBy: [{ region: 'asc' }, { createdAt: 'desc' }],
+    });
+    expect(result.items).toHaveLength(1);
+  });
+
   it('keeps ConflictException from create with other Prisma errors untouched', async () => {
     const { service } = make({
       create: jest.fn().mockRejectedValue(new ConflictException('other')),

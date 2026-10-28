@@ -41,6 +41,24 @@ export class SupportContactsService {
     return { items };
   }
 
+  /**
+   * Unauthenticated read for the landing page: only active contacts,
+   * only the fields the public site renders. Deliberately excludes
+   * timestamps and ids the marketing site does not need.
+   */
+  async publicActive() {
+    const items = await this.prisma.supportContact.findMany({
+      where: { isActive: true },
+      select: {
+        contact: true,
+        contactType: true,
+        region: true,
+      },
+      orderBy: [{ region: 'asc' }, { createdAt: 'desc' }],
+    });
+    return { items };
+  }
+
   async one(id: string) {
     const supportContact = await this.prisma.supportContact.findUnique({
       where: { id },

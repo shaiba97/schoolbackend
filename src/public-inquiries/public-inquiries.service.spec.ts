@@ -1,5 +1,5 @@
 import { PublicInquiriesService } from './public-inquiries.service';
-import type { CreatePublicInquiryDto } from './dto/create-public-inquiry.dto';
+import { InquiryRegion, type CreatePublicInquiryDto } from './dto/create-public-inquiry.dto';
 
 const prismaMock = {
   inquiry: { create: jest.fn() },
@@ -12,7 +12,7 @@ const INPUT: CreatePublicInquiryDto = {
   schoolName: 'Al-Manar Academy',
   email: 'amina@almanar.sd',
   phone: '+249912345678',
-  region: 'SUDAN',
+  region: InquiryRegion.SUDAN,
   message: 'We would like a quote for a school of about 800 students.',
 };
 

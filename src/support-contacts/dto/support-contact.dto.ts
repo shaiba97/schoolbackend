@@ -19,15 +19,15 @@ export class UpdateSupportContactDto {
   @IsString()
   @IsNotEmpty()
   @Length(1, 255)
-  contact!: string;
+  contact?: string;
 
   @IsOptional()
   @IsEnum(ContactType)
-  contactType!: ContactType;
+  contactType?: ContactType;
 
   @IsOptional()
   @IsEnum(InquiryRegion)
-  region!: InquiryRegion;
+  region?: InquiryRegion;
 
   @IsOptional()
   @IsBoolean()
