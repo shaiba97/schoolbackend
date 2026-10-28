@@ -962,7 +962,14 @@ export class FinancePayrollService {
       id: p.id,
       userId: p.userId,
       staffName: p.user ? this.fullName(p.user) : '',
-      staffNumber: p.user?.staffNumber ?? '',
+      staffNumber: p.user?.teacherProfile?.employeeNumber ?? p.user?.staffNumber ?? '',
+      staffEmail: p.user?.email ?? '',
+      staffPhone: p.user?.phone ?? '',
+      staffSubject: p.user?.teacherProfile?.specialization ?? '',
+      departmentName:
+        p.user?.teacherProfile?.department?.name ??
+        p.positionAssignment?.position?.department?.name ??
+        '',
       payslipNo: p.payslipNo,
       positionAssignmentId: p.positionAssignmentId,
       positionTitle: p.positionAssignment?.position?.title ?? '',
@@ -995,21 +1002,79 @@ export class FinancePayrollService {
   }
 
   private payoutInclude = {
-    user: { select: { firstName: true, lastName: true, staffNumber: true } },
-    positionAssignment: { include: { position: { select: { title: true, currencyCode: true } } } },
+    user: {
+      select: {
+        firstName: true,
+        lastName: true,
+        staffNumber: true,
+        email: true,
+        phone: true,
+        teacherProfile: {
+          select: {
+            employeeNumber: true,
+            specialization: true,
+            department: { select: { name: true } },
+          },
+        },
+      },
+    },
+    positionAssignment: {
+      include: {
+        position: {
+          select: { title: true, currencyCode: true, department: { select: { name: true } } },
+        },
+      },
+    },
     financialPeriod: { select: { name: true } },
     deductions: { orderBy: { createdAt: 'asc' as const } },
   };
 
-  async listPayouts(tenantId: string, status?: string) {
+  async listPayouts(tenantId: string, status?: string, limit?: number) {
+    const requested = Number.isFinite(limit) ? Math.trunc(limit as number) : 300;
+    const take = requested === 0 ? undefined : Math.min(Math.max(requested, 1), 5000);
     return this.prisma.withTenantRead(tenantId, async (tx) => {
       const rows = await tx.salaryPayout.findMany({
         where: { tenantId, ...(status ? { status: status.toUpperCase() as any } : {}) },
         include: this.payoutInclude,
         orderBy: { createdAt: 'desc' },
-        take: 300,
+        ...(take ? { take } : {}),
       });
       return rows.map((p: any) => this.mapPayout(p));
+    });
+  }
+
+  // Teacher-portal self-service: the caller's own payslips plus year-to-date
+  // aggregates. The userId comes from the session (teachers/me), never from
+  // the wire, so a teacher can only see their own payouts. Aggregates follow
+  // the same statuses the accountant register uses: PAID counts as confirmed
+  // income, DRAFT/APPROVED are still pending.
+  async listMyPayouts(tenantId: string, userId: string, now: Date = new Date()) {
+    return this.prisma.withTenantRead(tenantId, async (tx) => {
+      const rows = await tx.salaryPayout.findMany({
+        where: { tenantId, userId: userId },
+        include: this.payoutInclude,
+        orderBy: [{ periodStart: 'desc' }, { createdAt: 'desc' }],
+        take: 120,
+      });
+      const payouts = rows.map((p: any) => this.mapPayout(p));
+      const year = now.getUTCFullYear();
+      let paidTotal = 0;
+      let pendingTotal = 0;
+      let currencyCode = '';
+      for (const p of payouts) {
+        currencyCode = currencyCode || p.currencyCode || '';
+        // mapPayout lower-cases status — compare against the mapped values.
+        if (p.status === 'paid') {
+          const paidYear = p.paidAt ? new Date(p.paidAt).getUTCFullYear() : null;
+          if (paidYear === year) paidTotal = round2(paidTotal + num(p.netAmount));
+        } else if (p.status === 'draft' || p.status === 'approved') {
+          pendingTotal = round2(pendingTotal + num(p.netAmount));
+        }
+      }
+      return {
+        payouts,
+        ytd: { year, paidTotal, pendingTotal, currencyCode },
+      };
     });
   }
 

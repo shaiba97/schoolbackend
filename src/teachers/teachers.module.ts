@@ -10,6 +10,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { ExamsModule } from '../exams/exams.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthModule } from '../auth/auth.module';
+import { FinanceModule } from '../finance/finance.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AuthModule } from '../auth/auth.module';
     RealtimeModule,
     ExamsModule,
     NotificationsModule,
+    FinanceModule,
     AuthModule,
   ],
   // TeachersMeController must come first: Nest matches routes in registration

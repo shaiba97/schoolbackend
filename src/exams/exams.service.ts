@@ -248,6 +248,7 @@ export class ExamsService {
         });
         if (!scale) throw new NotFoundException('Grading scale not found in this tenant');
       }
+      if (s.sample) this.validateExamSample(tenantId, s.sample);
       await tx.examSubject.create({
         data: {
           tenantId,
@@ -258,6 +259,7 @@ export class ExamsService {
           passingMarks: s.passingMarks,
           weight: s.weight,
           gradingScaleId: s.gradingScaleId,
+          sampleObjectKey: s.sample?.objectKey,
         },
       });
     }
@@ -272,6 +274,26 @@ export class ExamsService {
           where,
           include: {
             author: { select: { id: true, firstName: true, lastName: true } },
+            examSubjects: {
+              select: {
+                id: true,
+                classSubject: {
+                  select: {
+                    classId: true,
+                    schoolClass: {
+                      select: {
+                        id: true,
+                        className: true,
+                        educationLevel: true,
+                        grade: true,
+                        track: true,
+                      },
+                    },
+                    subject: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
             _count: { select: { examSubjects: true, examRoomAssignments: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -300,6 +322,13 @@ export class ExamsService {
           examRoomAssignments: {
             include: {
               hall: true,
+              students: {
+                include: { student: true },
+                orderBy: { seatOrder: 'asc' },
+              },
+              invigilators: {
+                include: { teacher: { include: { user: true } } },
+              },
               _count: { select: { students: true, invigilators: true } },
             },
           },

@@ -5,10 +5,11 @@ import { StudentsService } from './students.service';
 import { StudentsMeService } from './students-me.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
+import { FinanceModule } from '../finance/finance.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, StorageModule, AuthModule],
+  imports: [PrismaModule, StorageModule, FinanceModule, AuthModule],
   // Order is load-bearing. Nest matches routes in registration order, so
   // StudentsMeController must precede StudentsController; otherwise
   // `students/:id` captures `students/me` and its ParseUUIDPipe rejects

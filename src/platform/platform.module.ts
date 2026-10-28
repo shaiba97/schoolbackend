@@ -15,6 +15,7 @@ import { PlatformHealthService } from './platform-health.service';
 import { PlatformHealthController } from './platform-health.controller';
 import { PlatformPlansService } from './platform-plans.service';
 import { PlatformPlansController } from './platform-plans.controller';
+import { PlatformPlansPublicController } from './platform-plans-public.controller';
 import { PlatformExpirationService } from './platform-expiration.service';
 import {
   ManualPaymentGatewayAdapter,
@@ -36,6 +37,7 @@ import { PlatformAnnouncementsController } from './platform-announcements.contro
     PlatformAnnouncementsController,
     PlatformFinancialsController,
     PlatformPlansController,
+    PlatformPlansPublicController,
     PlatformHealthController,
   ],
   providers: [

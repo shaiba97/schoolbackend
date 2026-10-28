@@ -32,6 +32,8 @@ import { FinanceModule } from './finance/finance.module';
 import { TransportModule } from './transport/transport.module';
 import { PlatformModule } from './platform/platform.module';
 import { SchoolAdminModule } from './school-admin/school-admin.module';
+import { PublicInquiriesModule } from './public-inquiries/public-inquiries.module';
+import { SupportContactsModule } from './support-contacts/support-contacts.module';
 
 @Module({
   imports: [
@@ -69,6 +71,8 @@ import { SchoolAdminModule } from './school-admin/school-admin.module';
     TransportModule,
     PlatformModule,
     SchoolAdminModule,
+    PublicInquiriesModule,
+    SupportContactsModule,
   ],
   controllers: [AppController],
   providers: [

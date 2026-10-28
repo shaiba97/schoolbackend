@@ -502,3 +502,32 @@ describe('shortage rates', () => {
     await expect(harness(txBase()).getShortageRates(TENANT)).resolves.toEqual({ absentDaily: 0, lateRate: 0 });
   });
 });
+
+
+describe('listMyPayouts', () => {
+  it('sums paid nets within the paid-at year and pending nets of DRAFT/APPROVED', async () => {
+    const payouts = [
+      { id: 'p1', user: {}, status: 'PAID', paidAt: new Date('2026-03-05T00:00:00Z'), netAmount: 1000, currencyCode: 'SDG', periodStart: new Date('2026-02-01'), periodEnd: new Date('2026-02-28'), createdAt: new Date('2026-02-20'), deductions: [] },
+      { id: 'p2', user: {}, status: 'PAID', paidAt: new Date('2025-12-30T00:00:00Z'), netAmount: 900, currencyCode: 'SDG', periodStart: new Date('2025-12-01'), periodEnd: new Date('2025-12-31'), createdAt: new Date('2025-12-20'), deductions: [] },
+      { id: 'p3', user: {}, status: 'APPROVED', paidAt: null, netAmount: 700, currencyCode: 'SDG', periodStart: new Date('2026-09-01'), periodEnd: new Date('2026-09-30'), createdAt: new Date('2026-09-20'), deductions: [] },
+      { id: 'p4', user: {}, status: 'CANCELLED', paidAt: null, netAmount: 500, currencyCode: 'SDG', periodStart: new Date('2026-08-01'), periodEnd: new Date('2026-08-31'), createdAt: new Date('2026-08-20'), deductions: [] },
+    ];
+    const tx = {
+      salaryPayout: {
+        findMany: jest.fn(async () => payouts),
+      },
+    };
+    const out: any = await harness(tx).listMyPayouts(TENANT, 'u-me', new Date('2026-10-15T00:00:00Z'));
+    expect(out.payouts).toHaveLength(4);
+    expect(out.ytd.paidTotal).toBe(1000);
+    expect(out.ytd.pendingTotal).toBe(700);
+    expect(out.ytd.currencyCode).toBe('SDG');
+    expect(out.ytd.year).toBe(2026);
+  });
+
+  it('queries only the callers own payouts', async () => {
+    const tx = { salaryPayout: { findMany: jest.fn(async () => []) } };
+    await harness(tx).listMyPayouts(TENANT, 'u-me');
+    expect(tx.salaryPayout.findMany.mock.calls[0][0].where).toEqual({ tenantId: TENANT, userId: 'u-me' });
+  });
+});

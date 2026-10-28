@@ -22,9 +22,10 @@ import { PERMISSIONS, hasPermission } from '../auth/permissions';
 import { CurrentTenant } from '../common/tenant/current-tenant.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { FinancePayrollService } from './finance-payroll.service';
+import { FINANCE_PORTAL_READ } from './finance-portal.roles';
 import { AssignStaffSalaryDto, CreateFamilyConditionDto, CreateSiblingRuleDto, PaySalaryDto, SetSalaryOverrideDto, SetShortageRatesDto, UpsertPositionSalaryDto } from './dto/finance.dto';
 
-export const READ = ['ACCOUNTANT'];
+export const READ = FINANCE_PORTAL_READ;
 export const WRITE = ['ACCOUNTANT'];
 export const APPROVER = ['ACCOUNTANT'];
 
@@ -122,8 +123,12 @@ export class FinancePayrollController {
   // --- Payouts ---
   @Get('finance/salary-payouts')
   @Roles(...READ)
-  payouts(@CurrentTenant('tenantId') t: string, @Query('status') status?: string) {
-    return this.service.listPayouts(t, status);
+  payouts(
+    @CurrentTenant('tenantId') t: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.listPayouts(t, status, limit ? Number(limit) : undefined);
   }
 
   @Post('finance/salary-payouts')

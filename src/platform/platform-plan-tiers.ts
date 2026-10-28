@@ -53,6 +53,25 @@ const ALL_PORTALS: PortalModule[] = [
   PortalModule.RECEPTION,
 ];
 
+/** Card order for the portal columns of the tier catalogue. */
+export const PORTAL_MODULE_ORDER: PortalModule[] = ALL_PORTALS;
+
+/**
+ * Human labels for every portal module. A key without a label is a bug: the
+ * public pricing catalogue renders these labels verbatim, and a missing
+ * label would surface as a blank checklist row.
+ */
+export const PORTAL_MODULE_LABELS: Record<PortalModule, string> = {
+  [PortalModule.ADMIN]: 'Central Admin Portal',
+  [PortalModule.ACADEMIC]: 'Academic & Examination Center',
+  [PortalModule.FINANCIAL]: 'Financial & Student Payments',
+  [PortalModule.TEACHER]: 'Teacher Portal',
+  [PortalModule.GUARDIAN]: 'Parent Portal',
+  [PortalModule.STUDENT]: 'Student Portal',
+  [PortalModule.TRANSPORT]: 'Transport & Fleet Management',
+  [PortalModule.RECEPTION]: 'Receptionist Portal',
+};
+
 /**
  * The platform tier catalogue. A tier carries one flat **yearly** price in
  * USD; the console shows the monthly equivalent beside it. A tier with no

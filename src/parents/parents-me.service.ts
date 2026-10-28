@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StudentsMeService } from '../students/students-me.service';
+import { FinancePortalService } from '../finance/finance-portal.service';
 
 type Db = Prisma.TransactionClient | PrismaService;
 
@@ -19,6 +20,7 @@ export class ParentsMeService {
     private prisma: PrismaService,
     private studentsMe: StudentsMeService,
     private jwt: JwtService,
+    private financePortal: FinancePortalService,
   ) {}
 
   private async resolveGuardian(
@@ -182,6 +184,18 @@ export class ParentsMeService {
       const guardian = await this.resolveGuardian(db, tenantId, userId);
       const student = await this.requireWard(db, tenantId, guardian.id, studentId);
       return this.studentsMe.trendForStudent(db, tenantId, student.id, query);
+    });
+  }
+
+  // GET /parents/me/children/:childId/finance — the ward's fee ledger. Same
+  // ward-link verification as every other ward route: childId is checked
+  // against studentGuardian before FinancePortalService is consulted, so a
+  // guardian can only ever pull ledgers of their own children.
+  async getWardFinance(tenantId: string, userId: string, studentId: string) {
+    return this.prisma.withTenantRead(tenantId, async (db) => {
+      const guardian = await this.resolveGuardian(db, tenantId, userId);
+      const student = await this.requireWard(db, tenantId, guardian.id, studentId);
+      return this.financePortal.getStudentLedger(tenantId, student.id);
     });
   }
 

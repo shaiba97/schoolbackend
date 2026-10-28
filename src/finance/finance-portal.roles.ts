@@ -4,8 +4,10 @@ export const FINANCE_ROLES = [
   'ACCOUNTANT',
 ] as const;
 
+/** Tenant admins get read-only visibility; financial writes stay with ACCOUNTANT. */
 export const FINANCE_PORTAL_READ = [
   'ACCOUNTANT',
+  'ADMIN',
 ] as const;
 
 export const FINANCE_PORTAL_WRITE = [

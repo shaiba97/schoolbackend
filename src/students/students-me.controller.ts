@@ -41,6 +41,14 @@ export class StudentsMeController {
     return this.service.getProfile(tenantId, userId);
   }
 
+  @Get('finance')
+  finance(
+    @CurrentTenant('tenantId') tenantId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.service.getFinance(tenantId, userId);
+  }
+
   @Get('timetable')
   timetable(
     @CurrentTenant('tenantId') tenantId: string,

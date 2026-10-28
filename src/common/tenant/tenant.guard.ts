@@ -15,8 +15,10 @@ export interface TenantContext {
   roles: string[];
 }
 
-/** Tenant states that keep defying logins and API access. */
-const BLOCKED_TENANT_STATUSES = ['SUSPENDED', 'ARCHIVED', 'PENDING'] as const;
+/** Tenant states that keep defying logins and API access. Shared with the
+ * JWT strategy so a suspended/locked school's sessions die at the token
+ * boundary too, not only at guarded endpoints. */
+export const BLOCKED_TENANT_STATUSES = ['SUSPENDED', 'ARCHIVED', 'PENDING'] as const;
 
 const BLOCKED_TENANT_MESSAGE =
   'This school is currently locked by the provider. Contact support.';

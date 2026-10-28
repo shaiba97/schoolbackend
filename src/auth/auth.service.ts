@@ -398,8 +398,7 @@ export class AuthService {
   async updateMe(
     userId: string,
     dto: {
-      firstName?: string;
-      lastName?: string;
+      fullName?: string;
       phone?: string;
       avatarUrl?: string;
     },
@@ -408,13 +407,15 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
 
     const data: Record<string, unknown> = {};
-    if (dto.firstName !== undefined) {
-      if (!dto.firstName.trim())
-        throw new BadRequestException('First name cannot be blank');
-      data.firstName = dto.firstName.trim();
+    // Name is one concept: a full name. It is stored in the (required)
+    // first_name column whole and last_name stays null, so every consumer
+    // that composes a display name shows the full name exactly once.
+    if (dto.fullName !== undefined) {
+      if (!dto.fullName.trim())
+        throw new BadRequestException('Full name cannot be blank');
+      data.firstName = dto.fullName.trim();
+      data.lastName = null;
     }
-    if (dto.lastName !== undefined)
-      data.lastName = dto.lastName?.trim() || null;
     if (dto.phone !== undefined) data.phone = dto.phone?.trim() || null;
     if (dto.avatarUrl !== undefined)
       data.avatarUrl = dto.avatarUrl?.trim() || null;

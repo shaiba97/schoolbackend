@@ -33,12 +33,16 @@ function setup(store: ParentsMockDb) {
     trendForStudent: jest.fn(),
   };
   const jwt = { signAsync: jest.fn().mockResolvedValue('ticket-abc') };
+  const financePortal: any = {
+    getStudentLedger: jest.fn(async (_t: string, studentId: string) => ({ ledger: studentId })),
+  };
   const service = new ParentsMeService(
     prisma as never,
     studentsMe as never,
     jwt as never,
+    financePortal as never,
   );
-  return { service, studentsMe, jwt };
+  return { service, studentsMe, jwt, financePortal };
 }
 
 function guardianStore(overrides: Partial<ParentsMockDb> = {}): ParentsMockDb {
@@ -204,6 +208,36 @@ describe('ParentsMeService ward scoping', () => {
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(studentsMe.trendForStudent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ward finance', () => {
+    function wardOk() {
+      const store = guardianStore();
+      store.studentGuardian.findFirst.mockResolvedValue({ studentId: WARD_ID });
+      store.student.findFirst.mockResolvedValue({ id: WARD_ID });
+      return store;
+    }
+
+    it("returns the ledger of the caller's own ward via the finance portal", async () => {
+      const { service, financePortal } = setup(wardOk());
+      financePortal.getStudentLedger.mockResolvedValue({ totals: { balance: 42 } });
+
+      const result = await service.getWardFinance(TENANT, GUARDIAN_USER, WARD_ID);
+
+      expect(financePortal.getStudentLedger).toHaveBeenCalledWith(TENANT, WARD_ID);
+      expect(result).toEqual({ totals: { balance: 42 } });
+    });
+
+    it("403s another family's child without touching the ledger", async () => {
+      const store = guardianStore();
+      store.studentGuardian.findFirst.mockResolvedValue(null);
+      const { service, financePortal } = setup(store);
+
+      await expect(
+        service.getWardFinance(TENANT, GUARDIAN_USER, 'other-child'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(financePortal.getStudentLedger).not.toHaveBeenCalled();
     });
   });
 

@@ -133,8 +133,12 @@ export class FinancePortalController {
 
   @Get('finance/payments')
   @Roles(...READ)
-  payments(@CurrentTenant('tenantId') t: string, @Query('status') status?: string) {
-    return this.service.listPayments(t, status);
+  payments(
+    @CurrentTenant('tenantId') t: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.listPayments(t, status, limit ? Number(limit) : undefined);
   }
 
   @Post('finance/payments')

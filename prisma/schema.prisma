@@ -1171,6 +1171,8 @@ model ExamSubject {
 
   gradingScaleId String? @map("grading_scale_id") @db.Uuid
 
+sampleObjectKey String? @map("sample_object_key")
+
   examDate DateTime? @map("exam_date") @db.Date
 
   maxMarks     Decimal  @map("max_marks") @db.Decimal(8, 2)
@@ -3161,4 +3163,85 @@ model PlatformBackup {
 
   @@index([tenantId, createdAt])
   @@map("platform_backups")
+}
+
+// ---------------------------------------------------------------------------
+// Public intake: inquiries submitted from the marketing site's contact form.
+// Unauthenticated by definition, so the table carries no tenant linkage —
+// pricing and licensing live behind the platform console instead.
+// ---------------------------------------------------------------------------
+
+enum InquiryRegion {
+  SUDAN
+  EGYPT
+  GCC_KSA
+  GCC_UAE
+  GCC_KUWAIT
+  GCC_QATAR
+  GCC_OMAN
+  GCC_BAHRAIN
+
+  @@map("inquiry_region")
+}
+
+enum InquiryStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  ARCHIVED
+
+  @@map("inquiry_status")
+}
+
+model Inquiry {
+  id String @id @default(uuid()) @db.Uuid
+  fullName String @map("full_name") @db.VarChar(120)
+  schoolName String @map("school_name") @db.VarChar(160)
+
+  email String @db.VarChar(160)
+  phone String @db.VarChar(32)
+
+  region InquiryRegion
+  // Set by the console when the request needs its own one-line summary.
+  subject String? @map("subject") @db.VarChar(200)
+  message String        @db.Text
+
+  // Sales follow-up lifecycle; nothing here gates access.
+  status InquiryStatus @default(PENDING)
+
+  // Recorded so the platform operator can spot spam bursts, not for audit.
+  ipAddress String? @map("ip_address") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([region])
+  @@index([createdAt])
+  @@map("inquiries")
+}
+
+enum ContactType {
+  EMAIL
+  PHONE
+
+  @@map("contact_type")
+}
+
+// Public support contacts shown to schools per market (landing, portals,
+// billing emails). One row per address/number per region.
+model SupportContact {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Email address or phone number, as typed.
+  contact String @db.VarChar(255)
+  contactType ContactType @map("contact_type")
+  region InquiryRegion
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([region, contact])
+  @@index([region])
+  @@map("support_contacts")
 }

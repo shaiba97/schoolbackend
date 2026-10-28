@@ -35,8 +35,15 @@ describe('financial portal role sets — ACCOUNTANT has the entire portal', () =
     it(`${name} includes ACCOUNTANT`, () => {
       expect(set).toContain('ACCOUNTANT');
     });
-    it(`${name} keeps ADMIN out of finance`, () => {
-      expect(set).not.toContain('ADMIN');
-    });
   }
+
+  it('grants ADMIN read-only access to the portal', () => {
+    expect(FINANCE_PORTAL_READ).toContain('ADMIN');
+    expect(PAYROLL_READ).toContain('ADMIN');
+    expect(FINANCE_PORTAL_WRITE).not.toContain('ADMIN');
+    expect(FINANCE_PORTAL_CASHIER_WRITE).not.toContain('ADMIN');
+    expect(FINANCE_PORTAL_APPROVER).not.toContain('ADMIN');
+    expect(PAYROLL_WRITE).not.toContain('ADMIN');
+    expect(PAYROLL_APPROVER).not.toContain('ADMIN');
+  });
 });

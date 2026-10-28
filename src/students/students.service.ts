@@ -721,8 +721,68 @@ export class StudentsService {
         include: {
           examSubject: {
             include: {
-              exam: { select: { id: true, name: true, status: true, publishedAt: true } },
-              classSubject: { include: { schoolClass: { select: { id: true, className: true } }, subject: true } },
+              exam: {
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                  publishedAt: true,
+                  examTypeId: true,
+                  startsOn: true,
+                  endsOn: true,
+                  academicYear: { select: { id: true, name: true, startsOn: true, endsOn: true, isCurrent: true } },
+                },
+              },
+              classSubject: { include: { schoolClass: { select: { id: true, className: true, track: true, educationLevel: true, grade: true } }, subject: true } },
+              gradingScale: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  }
+
+  /** Tenant-wide results board: one query for the master results view. */
+  async listTenantResults(
+    tenantId: string,
+    filters: { examTypeId?: string } = {},
+  ) {
+    return this.prisma.withTenantRead(tenantId, async (tx) => {
+      return tx.examResult.findMany({
+        where: {
+          tenantId,
+          ...(filters.examTypeId
+            ? { examSubject: { exam: { examTypeId: filters.examTypeId } } }
+            : {}),
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              roleNumber: true,
+              firstName: true,
+              lastName: true,
+              educationLevel: true,
+              grade: true,
+              status: true,
+            },
+          },
+          examSubject: {
+            include: {
+              exam: {
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                  publishedAt: true,
+                  examTypeId: true,
+                  startsOn: true,
+                  endsOn: true,
+                  academicYear: { select: { id: true, name: true, startsOn: true, endsOn: true, isCurrent: true } },
+                },
+              },
+              classSubject: { include: { schoolClass: { select: { id: true, className: true, track: true, educationLevel: true, grade: true } }, subject: true } },
               gradingScale: { select: { id: true, name: true } },
             },
           },

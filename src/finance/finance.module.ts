@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import {
@@ -21,7 +21,7 @@ import {
 import { FinancePortalController } from './finance-portal.controller';
 
 @Module({
-  imports: [PrismaModule, RealtimeModule, JwtModule],
+  imports: [PrismaModule, RealtimeModule, AuthModule],
   controllers: [
     FinanceCategoriesController,
     FinancePaymentsController,
@@ -50,7 +50,9 @@ import { FinancePortalController } from './finance-portal.controller';
   ],
   // TransportModule consumes FinancePortalService (setStudentTransportFee /
   // getTransportFeeStatus) at the service level — finance HTTP routes keep
-  // their ACCOUNTANT-portal RolesGuard regardless.
-  exports: [FinancePortalService],
+  // their ACCOUNTANT-portal RolesGuard regardless. Students/teachers/parents
+  // me-services reuse the same two finance brains for self-service ledger
+  // and payroll reads; they never receive finance HTTP routes at all.
+  exports: [FinancePortalService, FinancePayrollService],
 })
 export class FinanceModule {}

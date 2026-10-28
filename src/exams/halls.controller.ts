@@ -40,7 +40,7 @@ export class HallsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'ACADEMIC_ADMIN')
   create(
     @CurrentTenant('tenantId') tenantId: string,
     @Body() dto: CreateHallDto,
@@ -50,7 +50,7 @@ export class HallsController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'ACADEMIC_ADMIN')
   update(
     @CurrentTenant('tenantId') tenantId: string,
     @Param('id') id: string,
@@ -61,7 +61,7 @@ export class HallsController {
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'ACADEMIC_ADMIN')
   remove(
     @CurrentTenant('tenantId') tenantId: string,
     @Param('id') id: string,

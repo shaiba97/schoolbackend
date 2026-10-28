@@ -14,6 +14,20 @@ export const EXAM_STATUSES = [
   'CLOSED',
 ] as const;
 
+export class ExamSampleDto {
+  @ApiProperty({ description: 'Staged object key from POST /storage/upload with documentType EXAM_SAMPLE' })
+  @IsString()
+  objectKey: string;
+
+  @ApiProperty()
+  @IsString()
+  originalName: string;
+
+  @ApiProperty()
+  @IsNumber()
+  size: number;
+}
+
 export class CreateExamSubjectDto {
   @ApiProperty()
   @IsUUID()
@@ -45,20 +59,12 @@ export class CreateExamSubjectDto {
   @IsOptional()
   @IsUUID()
   gradingScaleId?: string;
-}
 
-export class ExamSampleDto {
-  @ApiProperty({ description: 'Staged object key from POST /storage/upload with documentType EXAM_SAMPLE' })
-  @IsString()
-  objectKey: string;
-
-  @ApiProperty()
-  @IsString()
-  originalName: string;
-
-  @ApiProperty()
-  @IsNumber()
-  size: number;
+  @ApiPropertyOptional({ description: 'Per-subject sample paper (staged upload)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExamSampleDto)
+  sample?: ExamSampleDto;
 }
 
 export class CreateExamDto {

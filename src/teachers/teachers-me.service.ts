@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { safeUserSelect } from '../common/safe-user.select';
+import { FinancePayrollService } from '../finance/finance-payroll.service';
 import { RealtimeGateway, roomsForTarget } from '../realtime/realtime.gateway';
 import { ExamsService } from '../exams/exams.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -67,11 +68,20 @@ export class TeachersMeService {
     private exams: ExamsService,
     private notifications: NotificationsService,
     private jwt: JwtService,
+    private financePayroll: FinancePayrollService,
   ) {}
 
   // -------------------------------------------------------------------------
   // Shared lookups
   // -------------------------------------------------------------------------
+
+  // GET /teachers/me/payroll — the caller's own payslips and YTD aggregates.
+  // userId is session-derived (never a path parameter), and the aggregate
+  // math lives in FinancePayrollService, so teacher and accountant registers
+  // cannot drift apart.
+  async myPayroll(tenantId: string, userId: string) {
+    return this.financePayroll.listMyPayouts(tenantId, userId);
+  }
 
   /** The Teacher row behind the authenticated user; 403 when there is none. */
   private async resolveTeacher(db: Db, tenantId: string, userId: string) {
@@ -1395,10 +1405,10 @@ export class TeachersMeService {
 
   /**
    * Supervisor consolidation: every subject of this class+exam must be fully
-   * submitted (all roster students marked, no DRAFT rows) before the exam
-   * moves to MODERATION — the academic queue signal. Idempotent: an already
-   * MODERATION exam re-verifies completeness and returns success without
-   * re-notifying.
+   * submitted (all roster students marked, no DRAFT rows) before the approval
+   * signal goes to academic affairs. Exam status is owned by academic
+   * affairs, so approval never mutates it; idempotent re-approval re-verifies
+   * completeness and returns success without re-notifying.
    */
   async approveClassExam(tenantId: string, userId: string, examId: string, classId: string) {
     return this.prisma.withTenant(tenantId, async (db) => {
@@ -1441,15 +1451,14 @@ export class TeachersMeService {
         }
       }
 
-      if (exam.status === 'MODERATION') return { approved: true };
-      await db.exam.update({ where: { id: examId }, data: { status: 'MODERATION' } });
-
+      // Approval is a gate + signal only: exam status ownership belongs to
+      // academic affairs, so the supervisor never mutates it.
       const staffUserIds = await this.academicStaffUserIds(db, tenantId);
       await this.notifications.notifyUsers(
         tenantId,
         staffUserIds,
-        'Marks ready to publish',
-        `${exam.name} · ${schoolClass.className} was approved by the supervisor and is waiting to publish.`,
+        'Marks ready for review',
+        `${exam.name} · ${schoolClass.className} was approved by the supervisor and is waiting for review.`,
         'MARKS_APPROVED',
       );
       return { approved: true };
@@ -1458,8 +1467,8 @@ export class TeachersMeService {
 
   /**
    * Supervisor return: SUBMITTED rows of one subject go back to DRAFT with
-   * the reason recorded, reopening teacher edits. A MODERATION exam drops
-   * back to MARKS_OPEN since its set is no longer complete.
+   * the reason recorded, reopening teacher edits. Exam status is never
+   * touched here; academic affairs owns it end to end.
    */
   async returnSubjectMarks(
     tenantId: string,
@@ -1489,7 +1498,6 @@ export class TeachersMeService {
       if (!examSubject || examSubject.classSubject.classId !== classId) {
         throw new NotFoundException('Exam subject not found in this class');
       }
-      const examId = examSubject.exam.id;
 
       const supervisorProfile = await db.teacher.findFirst({
         where: { id: teacher.id, tenantId },
@@ -1504,10 +1512,6 @@ export class TeachersMeService {
         where: { examSubjectId, tenantId, status: 'SUBMITTED' },
         data: { status: 'DRAFT', moderationNote: reason, moderatedByName: supervisorName },
       });
-
-      if (examSubject.exam.status === 'MODERATION') {
-        await db.exam.update({ where: { id: examId }, data: { status: 'MARKS_OPEN' } });
-      }
 
       const recipients = new Set<string>();
       if (examSubject.exam.authorId) recipients.add(examSubject.exam.authorId);

@@ -48,7 +48,14 @@ function makeDb() {
     signAsync: jest.fn(async () => 'test-ticket'),
     verifyAsync: jest.fn(),
   } as any;
-  return { db, service: new StudentsMeService(prisma, jwt) };
+  const financePortal: any = {
+    getStudentLedger: jest.fn(async (_t: string, studentId: string) => ({ ledger: studentId })),
+  };
+  return {
+    db,
+    service: new StudentsMeService(prisma, jwt, financePortal as never),
+    financePortal,
+  };
 }
 
 /** Student A resolves; enrollment is ACTIVE in CLASS_A. */
@@ -585,5 +592,34 @@ describe('StudentsMeService performance trend', () => {
     });
 
     expect(trend.current.average).toBe(50);
+  });
+});
+
+describe('StudentsMeService — self finance', () => {
+  it("returns the ledger of the caller's own student via the finance portal", async () => {
+    const { db, service, financePortal } = makeDb();
+    seedStudentA(db);
+    financePortal.getStudentLedger.mockResolvedValue({ totals: { balance: 0 } });
+
+    const out: any = await service.getFinance(TENANT, USER_A);
+
+    expect(financePortal.getStudentLedger).toHaveBeenCalledWith(TENANT, STUDENT_A);
+    expect(out.totals.balance).toBe(0);
+  });
+
+  it('403s without a student profile and never touches the ledger', async () => {
+    const { db, service, financePortal } = makeDb();
+    db.student.findFirst.mockResolvedValue(null);
+
+    await expect(service.getFinance(TENANT, USER_A)).rejects.toThrow(/no student profile/i);
+    expect(financePortal.getStudentLedger).not.toHaveBeenCalled();
+  });
+
+  it('is scoped by tenant', async () => {
+    const { db, service, financePortal } = makeDb();
+    seedStudentA(db);
+
+    await expect(service.getFinance(OTHER_TENANT, USER_A)).rejects.toThrow(/no student profile/i);
+    expect(financePortal.getStudentLedger).not.toHaveBeenCalled();
   });
 });

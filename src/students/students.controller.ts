@@ -239,6 +239,16 @@ export class StudentsController {
     return this.service.updateStatus(tenantId, id, dto);
   }
 
+  @Get('results/board')
+  listTenantResults(
+    @CurrentTenant('tenantId') tenantId: string,
+    @Query('examTypeId') examTypeId?: string,
+  ) {
+    return this.service.listTenantResults(tenantId, {
+      examTypeId: examTypeId && examTypeId.trim() ? examTypeId.trim() : undefined,
+    });
+  }
+
   @Get(':id/results')
   listStudentResults(
     @CurrentTenant('tenantId') tenantId: string,

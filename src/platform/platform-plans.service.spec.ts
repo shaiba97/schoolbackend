@@ -718,6 +718,7 @@ describe('PlatformPlansService.upgrade', () => {
       id: PLAN_ID,
       code: 'ADVANCED',
       includedModules: ['ADMIN', 'FINANCIAL'],
+      price: 3600,
     });
     (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
       id: TENANT_ID,
@@ -766,6 +767,236 @@ describe('PlatformPlansService.upgrade', () => {
     );
   });
 
+  it('prices an upgrade to a list-priced tier at the tier list price', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'ADVANCED',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+      price: 3600,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: 800,
+          plan: { id: 'old-plan', code: 'PRIMARY', durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor);
+
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ yearlyPrice: 3600 }),
+      }),
+    );
+  });
+
+  it('carries the agreed yearly rate when the target tier has no list price', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'CUSTOM',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+      price: 0,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: 2600,
+          plan: { id: 'old-plan', code: 'INTERMEDIATE', durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor);
+
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ yearlyPrice: 2600 }),
+      }),
+    );
+  });
+
+  it('takes the tier list price even when the licence carried a higher negotiated rate', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'ADVANCED',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+      price: 3600,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: 5000,
+          plan: { id: 'old-plan', code: 'INTERMEDIATE', durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor);
+
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ yearlyPrice: 3600 }),
+      }),
+    );
+  });
+
+  it('lets an operator-entered price override the tier list price', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'ADVANCED',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+      price: 3600,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: 800,
+          plan: { id: 'old-plan', code: 'PRIMARY', durationDays: 365 },
+        },
+      ],
+    });
+
+    const result = await service.upgrade(
+      TENANT_ID,
+      { planId: PLAN_ID, years: 2, yearlyPrice: 4200 },
+      actor,
+    );
+
+    expect(result.yearlyPrice).toBe(4200);
+    expect(result.termTotal).toBe(8400);
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ yearlyPrice: 4200 }),
+      }),
+    );
+  });
+
+  it('keeps the agreed rate when an expired licence takes the same tier again', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'CUSTOM',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+      price: 0,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'SUSPENDED',
+      lockedAt: new Date('2026-04-01'),
+      lockReason: 'LICENSE_EXPIRED',
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'EXPIRED',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-03-31'),
+          terminatedAt: new Date('2026-04-01'),
+          yearlyPrice: 4200,
+          plan: { id: PLAN_ID, code: 'CUSTOM', durationDays: 365 },
+        },
+      ],
+    });
+
+    await service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor);
+
+    expect(prisma.tenantLicense.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LICENSE_ID },
+        data: expect.objectContaining({ yearlyPrice: 4200 }),
+      }),
+    );
+  });
+
+  it('refuses a quoted tier with no agreed rate instead of writing a zero licence', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
+      id: PLAN_ID,
+      code: 'CUSTOM',
+      includedModules: ['ADMIN'],
+      durationDays: 365,
+      price: 0,
+    });
+    (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
+      id: TENANT_ID,
+      name: 'Springfield Academy',
+      status: 'ACTIVE',
+      lockedAt: null,
+      lockReason: null,
+      licenses: [
+        {
+          id: LICENSE_ID,
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01'),
+          expiresAt: new Date('2026-12-31'),
+          terminatedAt: null,
+          yearlyPrice: null,
+          plan: { id: 'old-plan', code: 'LEGACY', durationDays: 0 },
+        },
+      ],
+    });
+
+    await expect(
+      service.upgrade(TENANT_ID, { planId: PLAN_ID }, actor),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.tenantLicense.update).not.toHaveBeenCalled();
+  });
+
   it('starts the new tier term when a school moves off a lifetime plan', async () => {
     const { service, prisma } = build();
     (prisma.platformPlan.findUnique as jest.Mock).mockResolvedValue({
@@ -773,6 +1004,7 @@ describe('PlatformPlansService.upgrade', () => {
       code: 'ADVANCED',
       includedModules: ['ADMIN'],
       durationDays: 365,
+      price: 3600,
     });
     (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
       id: TENANT_ID,
@@ -808,6 +1040,7 @@ describe('PlatformPlansService.upgrade', () => {
       code: 'ADVANCED',
       includedModules: ['ADMIN'],
       durationDays: 365,
+      price: 3600,
     });
     (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({
       id: TENANT_ID,
@@ -839,5 +1072,86 @@ describe('PlatformPlansService.upgrade', () => {
         }),
       }),
     );
+  });
+});
+
+describe('PlatformPlansService.publicPricingTiers', () => {
+  function pricingRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: PLAN_ID,
+      code: 'PRIMARY',
+      name: 'Primary Plan',
+      tier: 'PRIMARY',
+      target: 'Small schools.',
+      billingModel: 'ANNUAL',
+      price: 800,
+      priceMax: null,
+      currency: 'USD',
+      durationDays: 365,
+      sortOrder: 1,
+      includedModules: ['ADMIN', 'ACADEMIC'],
+      features: { reportCards: true },
+      isActive: true,
+      ...overrides,
+    };
+  }
+
+  it('lists active, tiered rows only and labels the checklist', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findMany as jest.Mock).mockResolvedValue([
+      pricingRow(),
+      pricingRow({
+        code: 'LEGACY-ROW',
+        name: 'Legacy Plan',
+        tier: null,
+      }),
+      pricingRow({ code: 'OLD-TIER', name: 'Retired Tier', isActive: false }),
+    ]);
+
+    const tiers = await service.publicPricingTiers();
+
+    expect(tiers).toHaveLength(1);
+    expect(tiers[0].code).toBe('PRIMARY');
+    expect(tiers[0].monthlyPrice).toBeCloseTo(66.67, 2);
+    expect(tiers[0].isQuoteBased).toBe(false);
+
+    const modules = tiers[0].checklist.filter((item) => item.kind === 'module');
+    const unlocked = modules.filter((item) => item.unlocked).map((item) => item.label);
+    const locked = modules.filter((item) => !item.unlocked).map((item) => item.label);
+    expect(unlocked).toEqual(['Central Admin Portal', 'Academic & Examination Center']);
+    expect(locked).toContain('Financial & Student Payments');
+    expect(modules.map((item) => item.label)).toContain('Transport & Fleet Management');
+
+    const reportCards = tiers[0].checklist.find(
+      (item) => item.label === 'Basic report cards',
+    );
+    expect(reportCards).toMatchObject({ kind: 'feature', unlocked: true });
+    expect(
+      tiers[0].checklist.some((item) => item.kind === 'feature' && !item.unlocked),
+    ).toBe(false);
+  });
+
+  it('flags quote-based tiers', async () => {
+    const { service, prisma } = build();
+    (prisma.platformPlan.findMany as jest.Mock).mockResolvedValue([
+      pricingRow({
+        code: 'CUSTOM',
+        name: 'Customized Plan',
+        tier: 'CUSTOM',
+        price: 0,
+        target: 'School groups.',
+        includedModules: [],
+        features: { dedicatedSla: true },
+      }),
+    ]);
+
+    const tiers = await service.publicPricingTiers();
+
+    expect(tiers[0].isQuoteBased).toBe(true);
+    expect(tiers[0].monthlyPrice).toBe(0);
+    const dedicatedSla = tiers[0].checklist.find(
+      (item) => item.label === 'Dedicated SLA',
+    );
+    expect(dedicatedSla).toMatchObject({ kind: 'feature', unlocked: true });
   });
 });

@@ -56,6 +56,14 @@ export class TeachersMeController {
     return this.service.mintSocketTicket(tenantId, userId);
   }
 
+  @Get('payroll')
+  myPayroll(
+    @CurrentTenant('tenantId') tenantId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.service.myPayroll(tenantId, userId);
+  }
+
   @Get('dashboard')
   getDashboard(
     @CurrentTenant('tenantId') tenantId: string,

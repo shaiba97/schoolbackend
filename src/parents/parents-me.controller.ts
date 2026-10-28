@@ -58,6 +58,15 @@ export class ParentsMeController {
     return this.service.getWardAttendance(tenantId, userId, childId);
   }
 
+  @Get('children/:childId/finance')
+  wardFinance(
+    @CurrentTenant('tenantId') tenantId: string,
+    @CurrentUser('userId') userId: string,
+    @Param('childId', new ParseUUIDPipe({ version: '4' })) childId: string,
+  ) {
+    return this.service.getWardFinance(tenantId, userId, childId);
+  }
+
   @Get('children/:childId/timetable')
   wardTimetable(
     @CurrentTenant('tenantId') tenantId: string,

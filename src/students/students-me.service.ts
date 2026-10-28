@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { FinancePortalService } from '../finance/finance-portal.service';
 import { renderResultSlip } from './result-slip';
 import { safeUserSelect } from '../common/safe-user.select';
 import {
@@ -58,6 +59,7 @@ export class StudentsMeService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private financePortal: FinancePortalService,
   ) {}
 
   /**
@@ -143,6 +145,19 @@ export class StudentsMeService {
   // -------------------------------------------------------------------------
   // Profile
   // -------------------------------------------------------------------------
+
+  // GET /students/me/finance — the caller's own fee ledger. Resolves the
+  // student from the session exactly like every other self route, then hands
+  // the studentId to the shared finance-portal ledger (the accountant view's
+  // single source of installment math), so student and accountant always see
+  // the same numbers. Guardianship/contact facets of the ledger payload are
+  // harmless for self-view; the client renders what it needs.
+  async getFinance(tenantId: string, userId: string) {
+    const student = await this.prisma.withTenantRead(tenantId, async (db) => {
+      return this.resolveStudent(db, tenantId, userId);
+    });
+    return this.financePortal.getStudentLedger(tenantId, student.id);
+  }
 
   async getProfile(tenantId: string, userId: string) {
     return this.prisma.withTenantRead(tenantId, async (db) => {

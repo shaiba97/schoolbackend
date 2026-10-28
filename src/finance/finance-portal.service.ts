@@ -426,16 +426,23 @@ export class FinancePortalService {
     });
   }
 
-  async listPayments(tenantId: string, status?: string) {
+  async listPayments(tenantId: string, status?: string, limit?: number) {
+    const requested = Number.isFinite(limit) ? Math.trunc(limit as number) : 200;
+    const take = requested === 0 ? undefined : Math.min(Math.max(requested, 1), 5000);
     return this.prisma.withTenantRead(tenantId, async (tx) => {
       const payments = await tx.payment.findMany({
         where: { tenantId, ...(status ? { status: status.toUpperCase() as any } : {}) },
         include: {
-          student: { select: { id: true, firstName: true, lastName: true, educationLevel: true, grade: true } },
+          student: {
+            select: {
+              id: true, firstName: true, lastName: true, roleNumber: true,
+              educationLevel: true, grade: true,
+            },
+          },
           allocations: { orderBy: { createdAt: 'asc' } },
         },
         orderBy: { paidAt: 'desc' },
-        take: 200,
+        ...(take ? { take } : {}),
       });
 
       const studentIds = [...new Set(payments.map((p: any) => p.studentId))];
@@ -512,6 +519,7 @@ export class FinancePortalService {
           id: p.id,
           studentId: p.studentId,
           studentName: p.student ? this.fullName(p.student) : '',
+          roleNumber: p.student?.roleNumber ?? '',
           educationLevel: p.student?.educationLevel ?? '',
           grade: p.student?.grade ?? null,
           className: sched?.className ?? '',
@@ -530,6 +538,7 @@ export class FinancePortalService {
           status: sched?.status ?? 'on_track',
           daysLate: sched?.daysLate ?? 0,
           statusLabel: lower(p.status),
+          paymentStatus: p.status,
           paidAt: new Date(p.paidAt).toISOString(),
           // Task 2: stable receipt-issue timestamp (does not move on reprint).
           createdAt: new Date(p.createdAt).toISOString(),
@@ -908,54 +917,63 @@ export class FinancePortalService {
         roleNumber: (student as any).roleNumber ?? '',
         educationLevel: (student as any).educationLevel ?? '',
         grade: (student as any).grade ?? null,
+        className: '',
         phone: (student as any).phone ?? '',
         guardians,
       };
 
-      if (!sched || !sched.assigned) {
-        return {
-          profile,
-          fee: { templateName: '', currency: 'SDG', rows: [], total: 0, totalDiscount: 0, netTotal: 0 },
-          installments: [],
-          payments: [],
-          totals: { assigned: 0, paid: 0, balance: 0, status: 'FULLY_PAID', currency: 'SDG' },
-        };
-      }
-
-      const link = await tx.studentFeeStructure.findFirst({
-        where: { tenantId, studentId },
-        include: { feeStructure: { select: { name: true } } },
-        orderBy: { createdAt: 'desc' },
-      });
+      const [link, lifetimeLinks] = await Promise.all([
+        tx.studentFeeStructure.findFirst({
+          where: { tenantId, studentId },
+          include: {
+            feeStructure: { select: { name: true } },
+            schoolClass: { select: { className: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+        tx.studentFeeStructure.findMany({
+          where: { tenantId, studentId },
+          select: { id: true, totalFee: true, transportFee: true },
+        }),
+      ]);
       const currency = (link as any)?.currencyCode ?? 'SDG';
+      profile.className = (link as any)?.schoolClass?.className ?? sched?.className ?? '';
       const discountRows: any[] = (await tx.discountApplication?.findMany?.({
         where: { tenantId, studentId },
       })) ?? [];
-      const regDiscounted = discountRows
+      const currentDiscounts = discountRows.filter(
+        (d) => d.studentFeeStructureId === (link as any)?.id,
+      );
+      const regDiscounted = currentDiscounts
         .filter((d) => d.targetKind === 'REGISTRATION')
         .reduce((s, d) => s + num(d.amount), 0);
-      const instDiscounted = (sched.installments ?? []).reduce((s: number, i: any) => s + num(i.discounted), 0);
-      const feeRows = [
-        {
-          label: 'Base Tuition',
-          amount: num(sched.tuitionFee),
-          discount: round2(instDiscounted),
-          net: round2(num(sched.tuitionFee) - instDiscounted),
-        },
-        {
-          label: 'Registration Fee',
-          amount: num(sched.registrationFee),
-          discount: round2(regDiscounted),
-          net: round2(num(sched.registrationFee) - regDiscounted),
-        },
-      ];
+      const instDiscounted = (sched?.installments ?? []).reduce(
+        (s: number, i: any) => s + num(i.discounted),
+        0,
+      );
+      const feeRows: any[] = sched?.assigned
+        ? [
+            {
+              label: 'Base Tuition',
+              amount: num(sched.tuitionFee),
+              discount: round2(instDiscounted),
+              net: round2(num(sched.tuitionFee) - instDiscounted),
+            },
+            {
+              label: 'Registration Fee',
+              amount: num(sched.registrationFee),
+              discount: round2(regDiscounted),
+              net: round2(num(sched.registrationFee) - regDiscounted),
+            },
+          ]
+        : [];
       // No discount machinery targets transport — the row is always undiscounted.
-      if (num(sched.transportFee) > 0.005) {
+      if (num(sched?.transportFee) > 0.005) {
         feeRows.push({
           label: 'Transport Fee',
-          amount: num(sched.transportFee),
+          amount: num(sched?.transportFee),
           discount: 0,
-          net: round2(num(sched.transportFee)),
+          net: round2(num(sched?.transportFee)),
         });
       }
       // buildSchedules exposes reg totals only via paid math — recompute the
@@ -964,12 +982,12 @@ export class FinancePortalService {
         templateName: '',
         currency,
         rows: feeRows,
-        total: round2(num(sched.totalFee)),
-        totalDiscount: round2(num(sched.totalDiscounted ?? 0)),
-        netTotal: round2(num(sched.totalFee) - num(sched.totalDiscounted ?? 0)),
+        total: round2(num(sched?.totalFee)),
+        totalDiscount: round2(num(sched?.totalDiscounted ?? 0)),
+        netTotal: round2(num(sched?.totalFee) - num(sched?.totalDiscounted ?? 0)),
       };
 
-      const installments = (sched.installments ?? []).map((i: any) => {
+      const installments = (sched?.installments ?? []).map((i: any) => {
         const remaining = Math.max(0, round2(num(i.amount) - num(i.paid) - num(i.discounted)));
         const status = i.complete ? 'PAID' : i.overdue ? 'OVERDUE' : num(i.paid) > 0 ? 'PARTIAL' : 'PENDING';
         return {
@@ -985,12 +1003,20 @@ export class FinancePortalService {
         };
       });
 
-      const payments = await tx.payment.findMany({
-        where: { tenantId, studentId },
-        include: { allocations: { select: { kind: true, installmentNo: true, amount: true } } },
-        orderBy: { paidAt: 'desc' },
-        take: 500,
-      });
+      const [payments, lifetimeAllocs] = await Promise.all([
+        tx.payment.findMany({
+          where: { tenantId, studentId },
+          include: { allocations: { select: { kind: true, installmentNo: true, amount: true } } },
+          orderBy: { paidAt: 'desc' },
+        }),
+        tx.paymentAllocation.findMany({
+          where: {
+            tenantId,
+            studentFeeStructureId: { in: (lifetimeLinks as any[]).map((l) => l.id) },
+          },
+          include: { payment: { select: { status: true } } },
+        }),
+      ]);
       const paymentRows = (payments as any[]).map((p) => {
         const allocs = p.allocations ?? [];
         const targets = allocs.map((a: any) =>
@@ -1005,14 +1031,26 @@ export class FinancePortalService {
           method: p.method,
           amount: num(p.amount),
           currencyCode: p.currencyCode ?? currency,
-          by: '—',
+          status: p.status,
+          by: '-',
         };
       });
 
-      const assigned = fee.netTotal;
-      const paid = num(sched.totalPaid);
+      const lifetimeBilled = (lifetimeLinks as any[]).reduce(
+        (sum, row) => sum + num(row.totalFee) + num(row.transportFee),
+        0,
+      );
+      const lifetimeDiscount = discountRows.reduce((sum, row) => sum + num(row.amount), 0);
+      const assigned = (lifetimeLinks as any[]).length
+        ? Math.max(0, round2(lifetimeBilled - lifetimeDiscount))
+        : fee.netTotal;
+      const paid = round2(
+        (lifetimeAllocs as any[])
+          .filter((allocation) => allocation.payment?.status !== 'REFUNDED')
+          .reduce((sum, allocation) => sum + num(allocation.amount), 0),
+      );
       const balance = Math.max(0, round2(assigned - paid));
-      const status = balance <= 0.005 ? 'FULLY_PAID' : sched.status === 'overdue' ? 'OVERDUE' : 'PARTIALLY_PAID';
+      const status = balance <= 0.005 ? 'FULLY_PAID' : sched?.status === 'overdue' ? 'OVERDUE' : 'PARTIALLY_PAID';
 
       fee.templateName = (link as any)?.feeStructure?.name ?? '';
 
@@ -2094,7 +2132,33 @@ export class FinancePortalService {
     // Pass the extended getStats shape straight through — every key the
     // dashboard page needs (outflows, headcounts, activity, tenant) must
     // reach the client unmapped.
-    return this.dashboard.getStats(tenantId);
+    const stats: any = await this.dashboard.getStats(tenantId);
+    // Outstanding fees: reuse the per-student schedule engine so the number
+    // matches what each student's ledger shows (fees − paid − discounts),
+    // never a separate estimate. Active students only, mirroring getStats.
+    try {
+      stats.outstandingFeeBalance = await this.prisma.withTenantRead(
+        tenantId,
+        async (tx: any) => {
+          const students: any[] = await tx.student.findMany({
+            where: { tenantId, status: 'ACTIVE' },
+            select: { id: true },
+          });
+          const schedules = await this.buildSchedules(
+            tx,
+            tenantId,
+            students.map((s: any) => s.id),
+          );
+          let outstanding = 0;
+          for (const row of schedules.values()) outstanding += num(row.balance);
+          return Math.round(outstanding * 100) / 100;
+        },
+      );
+    } catch (err) {
+      this.logger.warn(`Unable to compute outstanding fee balance: ${String(err)}`);
+      stats.outstandingFeeBalance = null;
+    }
+    return stats;
   }
 
   async getCollectionsSummary(tenantId: string) {

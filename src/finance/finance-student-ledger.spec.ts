@@ -77,6 +77,34 @@ describe('getStudentLedger', () => {
     expect(out.totals.status).toBe('PARTIALLY_PAID');
   });
 
+  it('aggregates lifetime billed and paid across academic years', async () => {
+    const tx = txBase();
+    const originalFindMany = tx.studentFeeStructure.findMany;
+    tx.studentFeeStructure.findMany = jest.fn(async (args: any) =>
+      args?.select
+        ? [
+            { id: 'link-1', totalFee: 10000, transportFee: 0 },
+            { id: 'link-0', totalFee: 5000, transportFee: 0 },
+          ]
+        : originalFindMany(args),
+    );
+    tx.paymentAllocation.findMany = jest.fn(async () => [
+      {
+        kind: 'INSTALLMENT', installmentNo: 1, amount: 2000, paymentId: 'pay-current',
+        studentFeeStructureId: 'link-1', payment: { status: 'COMPLETED' },
+        createdAt: new Date('2026-09-05T00:00:00Z'),
+      },
+      {
+        kind: 'INSTALLMENT', installmentNo: 1, amount: 1000, paymentId: 'pay-prior',
+        studentFeeStructureId: 'link-0', payment: { status: 'COMPLETED' },
+        createdAt: new Date('2025-09-05T00:00:00Z'),
+      },
+    ]);
+
+    const out: any = await harness(tx).getStudentLedger(TENANT, STUDENT);
+    expect(out.totals).toMatchObject({ assigned: 14100, paid: 3000, balance: 11100 });
+  });
+
   it('marks installments PAID / PARTIAL / OVERDUE correctly', async () => {
     const tx = txBase({
       paymentAllocation: {
@@ -110,7 +138,7 @@ describe('getStudentLedger', () => {
     const out: any = await harness(tx).getStudentLedger(TENANT, STUDENT);
     expect(out.payments).toHaveLength(1);
     expect(out.payments[0]).toMatchObject({
-      ref: 'REC-2026-0842', method: 'BANKAK', amount: 2000, by: '—',
+      ref: 'REC-2026-0842', method: 'BANKAK', amount: 2000, status: 'COMPLETED', by: '-',
     });
     expect(out.payments[0].target).toMatch(/1/);
   });

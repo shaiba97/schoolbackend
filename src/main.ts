@@ -51,4 +51,16 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+bootstrap().catch((error: NodeJS.ErrnoException & { port?: number }) => {
+  // The silent-crash class this prevents: a stale backend still holding port
+  // 3000 makes app.listen throw EADDRINUSE, which previously escaped as an
+  // unhandled rejection and looked like a startup hang.
+  if (error?.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${error.port ?? 3000} is already in use. Stop the stale backend first, e.g. taskkill /f /pid <pid of the old node dist/src/main>.`,
+    );
+  } else {
+    console.error('Backend failed to start:', error);
+  }
+  process.exitCode = 1;
+});

@@ -13,8 +13,32 @@ import {
   termTotal,
   termYears,
 } from './platform-pricing';
+import {
+  FEATURE_LABELS,
+  PORTAL_MODULE_LABELS,
+  PORTAL_MODULE_ORDER,
+} from './platform-plan-tiers';
 
 export type PlanActor = PlatformActor;
+
+/**
+ * The marketing-facing shape one tier card needs: the flat yearly price,
+ * its derived monthly equivalent, and a labelled checklist of what the
+ * tier unlocks (every portal column plus the features it grants).
+ */
+export type PublicPricingTier = {
+  code: string;
+  name: string;
+  tier: string;
+  target: string | null;
+  /** Flat yearly price in the tier's currency; 0 = quoted per school. */
+  price: number;
+  monthlyPrice: number;
+  currency: string;
+  billingModel: string;
+  isQuoteBased: boolean;
+  checklist: Array<{ kind: 'module' | 'feature'; label: string; unlocked: boolean }>;
+};
 
 export type TierInput = {
   code: string;
@@ -65,6 +89,57 @@ export class PlatformPlansService {
     });
 
     return plans.map((plan) => this.toTier(plan));
+  }
+
+  /**
+   * The public pricing catalogue for the marketing site: active, tiered rows
+   * only (legacy self-onboarded plans carry a NULL tier and stay internal),
+   * projected down to display fields. No ids, no audit surface — this
+   * endpoint is unauthenticated, so it must never leak more than the price
+   * sheet a walk-in prospect could get.
+   */
+  async publicPricingTiers(): Promise<PublicPricingTier[]> {
+    const tiers = await this.listTiers();
+    return tiers
+      .filter((tier) => tier.tier !== null && tier.isActive)
+      .map((tier) => {
+        const includedModules = new Set<string>(tier.includedModules);
+        const features = (tier.features ?? {}) as Record<
+          string,
+          boolean | number | string
+        >;
+        const checklist: PublicPricingTier['checklist'] = [
+          // Every portal column shows here so a school can compare tiers
+          // side by side; the ones the tier does not unlock render muted.
+          ...PORTAL_MODULE_ORDER.map((module) => ({
+            kind: 'module' as const,
+            label: PORTAL_MODULE_LABELS[module],
+            unlocked: includedModules.has(module),
+          })),
+          // Locked features stay silent: a tier card lists what a school
+          // gets on that tier, never an idle cross for features that are
+          // not even in the catalogue's feature vocabulary.
+          ...Object.entries(FEATURE_LABELS)
+            .filter(([key]) => features[key] === true)
+            .map(([, label]) => ({
+              kind: 'feature' as const,
+              label,
+              unlocked: true,
+            })),
+        ];
+        return {
+          code: tier.code,
+          name: tier.name,
+          tier: tier.tier ?? '',
+          target: tier.target,
+          price: tier.price,
+          monthlyPrice: tier.monthlyPrice,
+          currency: tier.currency,
+          billingModel: tier.billingModel,
+          isQuoteBased: tier.price <= 0,
+          checklist,
+        };
+      });
   }
 
   async createTier(input: TierInput, actor: PlatformActor) {
@@ -506,19 +581,31 @@ export class PlatformPlansService {
       new Date(
         Date.now() + (plan.durationDays || 365) * years * 24 * 60 * 60 * 1000,
       );
+    // The rate the licence will bill at:
+    // - an operator-entered price wins (the console's price field);
+    // - staying on the same tier is a term extension - its agreed rate stays;
+    // - a list-priced tier bills at its own list price;
+    // - a quoted tier (no list price) carries the licence's agreed rate.
     const yearlyPrice =
       input.yearlyPrice ??
-      (license.yearlyPrice !== null && license.yearlyPrice !== undefined
-        ? Number(license.yearlyPrice)
-        : Number(plan.price));
+      (plan.id === license.plan.id
+        ? Number(license.yearlyPrice ?? 0)
+        : Number(plan.price) > 0
+          ? Number(plan.price)
+          : (license.yearlyPrice !== null && license.yearlyPrice !== undefined
+            ? Number(license.yearlyPrice)
+            : 0));
+    if (!Number.isFinite(yearlyPrice) || yearlyPrice <= 0) {
+      throw new BadRequestException(
+        'A quoted tier needs an agreed yearly price - enter it in the price field.',
+      );
+    }
 
     await this.prisma.tenantLicense.update({
       where: { id: license.id },
       data: {
         planId: plan.id,
         expiresAt: termEndsAt,
-        // A quoted tier has no list price, so the agreed yearly rate is
-        // carried by the licence.
         yearlyPrice,
       },
     });
@@ -539,7 +626,11 @@ export class PlatformPlansService {
       entityType: 'tenant_license',
       entityId: license.id,
       tenantId: tenant.id,
-      oldValues: { planCode: license.plan.code, planId: license.plan.id },
+      oldValues: {
+        planCode: license.plan.code,
+        planId: license.plan.id,
+        yearlyPrice: license.yearlyPrice,
+      },
       newValues: {
         planCode: plan.code,
         planId: plan.id,

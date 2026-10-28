@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ExamsService } from '../exams/exams.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { FinancePayrollService } from '../finance/finance-payroll.service';
 
 /**
  * Unit tests for the teacher self-service scoping rules. The Prisma handle is
@@ -73,6 +74,7 @@ async function makeService(db: DeepMock) {
   const realtime = { emitDomainEvent: jest.fn().mockResolvedValue(undefined) };
   const exams = { applyReleaseRule: jest.fn().mockResolvedValue(undefined) };
   const notifications = { notifyUsers: jest.fn().mockResolvedValue({ notified: 1 }) };
+  const payroll: any = { listMyPayouts: jest.fn(async (_t: string, _u: string) => ({ payouts: [] })) };
   const jwt = {
     signAsync: jest.fn(async () => 'test-ticket'),
     verifyAsync: jest.fn(),
@@ -84,11 +86,12 @@ async function makeService(db: DeepMock) {
       { provide: RealtimeGateway, useValue: realtime },
       { provide: ExamsService, useValue: exams },
       { provide: NotificationsService, useValue: notifications },
+      { provide: FinancePayrollService, useValue: payroll },
       { provide: JwtService, useValue: jwt },
     ],
   }).compile();
 
-  return { service: module.get(TeachersMeService), realtime, exams, notifications, jwt };
+  return { service: module.get(TeachersMeService), realtime, exams, notifications, jwt, payroll };
 }
 
 /** teacher.findFirst used by resolveTeacher: route per userId. */
@@ -124,6 +127,22 @@ function mockAssignments(db: DeepMock) {
     return Promise.resolve([]);
   });
 }
+
+describe('TeachersMeService — self payroll', () => {
+  it("returns the session's own payouts via the payroll service", async () => {
+    const db = makeDb();
+    const { service, payroll } = await makeService(db);
+    payroll.listMyPayouts.mockResolvedValue({
+      payouts: [{ id: 'p-1', netAmount: 500, status: 'PAID' }],
+      ytd: { year: 2026, paidTotal: 500, pendingTotal: 0, currencyCode: 'SDG' },
+    });
+
+    const out: any = await service.myPayroll(TENANT, TEACHER_A_USER);
+
+    expect(payroll.listMyPayouts).toHaveBeenCalledWith(TENANT, TEACHER_A_USER);
+    expect(out.ytd.paidTotal).toBe(500);
+  });
+});
 
 describe('TeachersMeService — scoping', () => {
   let db: DeepMock;
@@ -783,7 +802,7 @@ describe('TeachersMeService — scoping', () => {
       };
     }
 
-    it('approves a fully submitted class exam to MODERATION and notifies academics', async () => {
+    it('signals academic affairs on approval without changing the exam status', async () => {
       supervisedClass();
       db.exam.findFirst.mockResolvedValue({
         id: 'exam-1',
@@ -793,7 +812,6 @@ describe('TeachersMeService — scoping', () => {
       });
       db.examSubject.findMany.mockResolvedValue([completeSubject()]);
       db.studentEnrollment.findMany.mockResolvedValue([{ studentId: 's-2' }]);
-      db.exam.update.mockResolvedValue({ id: 'exam-1' });
       db.membershipRole.findMany.mockResolvedValue([
         { membership: { userId: 'acad-1' } },
         { membership: { userId: 'acad-1' } },
@@ -802,14 +820,11 @@ describe('TeachersMeService — scoping', () => {
       const result = await service.approveClassExam(TENANT, TEACHER_B_USER, 'exam-1', 'class-2');
 
       expect(result).toEqual({ approved: true });
-      expect(db.exam.update).toHaveBeenCalledWith({
-        where: { id: 'exam-1' },
-        data: { status: 'MODERATION' },
-      });
+      expect(db.exam.update).not.toHaveBeenCalled();
       expect(notifications.notifyUsers).toHaveBeenCalledWith(
         TENANT,
         ['acad-1'],
-        'Marks ready to publish',
+        'Marks ready for review',
         expect.stringContaining('Midterm'),
         'MARKS_APPROVED',
       );
@@ -850,7 +865,7 @@ describe('TeachersMeService — scoping', () => {
       expect(db.exam.update).not.toHaveBeenCalled();
     });
 
-    it('returns marks to draft with a reason and reopens the exam', async () => {
+    it('returns marks to draft with a reason without touching the exam status', async () => {
       db.schoolClass.findFirst.mockResolvedValue({
         id: 'class-2',
         className: 'Grade 7',
@@ -880,7 +895,6 @@ describe('TeachersMeService — scoping', () => {
         return Promise.resolve(null);
       });
       db.examResult.updateMany.mockResolvedValue({ count: 1 });
-      db.exam.update.mockResolvedValue({ id: 'exam-1' });
 
       const result = await service.returnSubjectMarks(
         TENANT,
@@ -901,10 +915,7 @@ describe('TeachersMeService — scoping', () => {
           },
         },
       );
-      expect(db.exam.update).toHaveBeenCalledWith({
-        where: { id: 'exam-1' },
-        data: { status: 'MARKS_OPEN' },
-      });
+      expect(db.exam.update).not.toHaveBeenCalled();
       expect(notifications.notifyUsers).toHaveBeenCalledWith(
         TENANT,
         ['author-u'],
