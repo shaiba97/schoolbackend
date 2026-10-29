@@ -37,15 +37,13 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
+!.env.example
 
 # temp directory
 .temp
 .tmp
-storage/
+/storage/
 
 # Local tooling state and scratch files (not part of the service)
 .neon
