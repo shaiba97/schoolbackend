@@ -49,7 +49,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(process.env.PORT ?? 3000);
+  if (process.env.VERCEL !== '1') {
+    await app.listen(process.env.PORT ?? 3000);
+  }
 }
 bootstrap().catch((error: NodeJS.ErrnoException & { port?: number }) => {
   // The silent-crash class this prevents: a stale backend still holding port
