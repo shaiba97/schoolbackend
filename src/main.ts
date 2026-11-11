@@ -12,7 +12,10 @@ async function bootstrap() {
   const corsOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
     .map((o) => o.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    // Browsers always send a scheme in Origin; accept schemeless values
+    // like "schoollandingpage-ruddy.vercel.app" from the Vercel dashboard.
+    .map((o) => (/^https?:\/\//i.test(o) ? o : `https://${o}`));
 
   app.enableCors({
     origin:
